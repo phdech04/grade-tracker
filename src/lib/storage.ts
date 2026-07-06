@@ -9,7 +9,12 @@ const empty: AppData = { version: 3, courses: [] };
 function coerce(parsed: unknown): AppData | null {
   const p = parsed as { version?: number; courses?: unknown };
   if (!p || !Array.isArray(p.courses)) return null;
-  if (p.version === 3) return p as AppData;
+  if (p.version === 3) {
+    // Backfill events defensively — a hand-edited or partially-written payload
+    // may lack it, and the whole app assumes course.events is always an array.
+    const courses = (p.courses as Course[]).map((c) => ({ ...c, events: c.events ?? [] }));
+    return { version: 3, courses };
+  }
   if (p.version === 2) return migrateV2(p as AppDataV2);
   if (p.version === 1) return migrateV2(migrateV1(p as AppDataV1));
   return null;

@@ -76,7 +76,8 @@ function ViewRow({
   onToggle: () => void;
 }) {
   const overdue = !event.done && dueStatus(event.due, today) === "overdue";
-  const dueText = event.due ? formatDue(event.due, today) : event.dueRaw || "No date";
+  // Fall back to the raw phrase if `due` is present but unparseable (hand-edited data).
+  const dueText = (event.due && formatDue(event.due, today)) || event.dueRaw || "No date";
 
   return (
     <li className={`flex items-center gap-3 py-2 ${event.done ? "opacity-50" : ""}`}>

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { gradeSummary } from "./grades";
-import { migrateV1, type AppDataV1, type CourseV1 } from "./migrate";
+import {
+  migrateV1,
+  migrateV2,
+  type AppDataV1,
+  type AppDataV2,
+  type CourseV1,
+  type CourseV2,
+} from "./migrate";
 
 const base = { hurdles: [], createdAt: 0, updatedAt: 0 };
 
@@ -77,7 +84,8 @@ describe("migrateV1", () => {
     };
     // v1 grade over graded work: pop keeps best 2 = (1+1)/2 ; quizzes = 9.54/12 ;
     // midterm ungraded. earned = 2 + 9.54 = 11.54 over 2 + 12 = 14.
-    const out = migrateV1(wrap(v1));
+    // Migrated all the way to v3 so gradeSummary sees a current-shape Course.
+    const out = migrateV2(migrateV1(wrap(v1)));
     const s = gradeSummary(out.courses[0]);
     expect(s.current).toBeCloseTo((11.54 / 14) * 100, 5);
     // full denominator preserved: pop 2 slots x1 + quizzes 5x3 + midterm 27.5 = 44.5
@@ -114,5 +122,51 @@ describe("migrateV1", () => {
     const c = course.components[0];
     expect(c.linkGroupId).toBe("exam");
     expect("needsReview" in c).toBe(false);
+  });
+});
+
+describe("migrateV2", () => {
+  const v2Course: CourseV2 = {
+    id: "c",
+    name: "Stats",
+    code: "STAT 101",
+    term: "Fall 2026",
+    targetGrade: 85,
+    credits: 0.5,
+    components: [
+      {
+        id: "a",
+        name: "Assignments",
+        weight: 40,
+        items: [
+          { id: "i1", label: "A1", score: 90 },
+          { id: "i2", label: "A2" },
+        ],
+      },
+      { id: "f", name: "Final", weight: 60, items: [{ id: "f1", label: "Final" }] },
+    ],
+    hurdles: [{ id: "h", description: "Pass the final" }],
+    notes: "keep me",
+    createdAt: 7,
+    updatedAt: 9,
+  };
+  const wrap2 = (c: CourseV2): AppDataV2 => ({ version: 2, courses: [c] });
+
+  it("bumps the version and gives every course an empty events array", () => {
+    const out = migrateV2(wrap2(v2Course));
+    expect(out.version).toBe(3);
+    expect(out.courses[0].events).toEqual([]);
+  });
+
+  it("preserves all existing fields and the computed grade untouched", () => {
+    const before = gradeSummary({ ...v2Course, events: [] });
+    const out = migrateV2(wrap2(v2Course));
+    const c = out.courses[0];
+    expect(c.code).toBe("STAT 101");
+    expect(c.credits).toBe(0.5);
+    expect(c.hurdles).toHaveLength(1);
+    expect(c.notes).toBe("keep me");
+    expect(c.createdAt).toBe(7);
+    expect(gradeSummary(c).current).toBe(before.current);
   });
 });

@@ -43,6 +43,30 @@ export interface Hurdle {
   description: string;
 }
 
+export type EventKind = "assignment" | "quiz" | "exam" | "project" | "lab" | "other";
+
+/**
+ * A dated piece of coursework — an assignment, test, project, etc. Kept
+ * separate from the grade engine (Component/Item): events are about *when*
+ * things are due, not how the final mark is computed.
+ */
+export interface CourseEvent {
+  id: string;
+  title: string;
+  kind: EventKind;
+  /** ISO "YYYY-MM-DD". undefined when no concrete calendar date is known yet. */
+  due?: string;
+  /** Original phrase when the date couldn't be resolved ("Week 6", "TBD"). */
+  dueRaw?: string;
+  /** % this assessment is worth, if stated. Display only — not fed to the engine. */
+  weight?: number;
+  /** Soft link to the grading Component this belongs to, if any. */
+  componentId?: string;
+  /** Checked off by the student. */
+  done?: boolean;
+  source: "outline" | "manual";
+}
+
 export interface Course {
   id: string;
   name: string;
@@ -54,12 +78,14 @@ export interface Course {
   credits?: number;
   components: Component[];
   hurdles: Hurdle[];
+  /** Dated coursework (deadlines, exams). Empty for courses with none. */
+  events: CourseEvent[];
   notes?: string;
   createdAt: number;
   updatedAt: number;
 }
 
 export interface AppData {
-  version: 2;
+  version: 3;
   courses: Course[];
 }

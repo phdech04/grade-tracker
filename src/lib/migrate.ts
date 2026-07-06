@@ -1,8 +1,41 @@
-import type { AppData, Component, Course, DropRule, Hurdle, Item } from "../types";
+import type { AppData, Component, DropRule, Hurdle, Item } from "../types";
 import { countTarget } from "./grades";
 
-// v1 stored shapes (before the percent-only model). Structural types only —
-// the real v1 types no longer exist in the codebase.
+// Historical stored shapes. Each migrateVN takes the version-N payload and
+// returns the next version up; storage.ts chains them (v1 -> v2 -> v3).
+// The real vN types no longer exist in the codebase, so they're redeclared
+// structurally here.
+
+// --- v2: percent-only model, before dated coursework (events) existed -------
+
+/** v2 Course: identical to the current Course minus `events`. */
+export interface CourseV2 {
+  id: string;
+  name: string;
+  code?: string;
+  term?: string;
+  targetGrade?: number;
+  credits?: number;
+  components: Component[];
+  hurdles: Hurdle[];
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AppDataV2 {
+  version: 2;
+  courses: CourseV2[];
+}
+
+export function migrateV2(data: AppDataV2): AppData {
+  return {
+    version: 3,
+    courses: data.courses.map((c) => ({ ...c, events: [] })),
+  };
+}
+
+// --- v1: score/max + percentage-vs-points model -----------------------------
 
 export interface ItemV1 {
   id: string;
@@ -40,11 +73,11 @@ export interface AppDataV1 {
   courses: CourseV1[];
 }
 
-export function migrateV1(data: AppDataV1): AppData {
+export function migrateV1(data: AppDataV1): AppDataV2 {
   return { version: 2, courses: data.courses.map(migrateCourse) };
 }
 
-function migrateCourse(c: CourseV1): Course {
+function migrateCourse(c: CourseV1): CourseV2 {
   return {
     id: c.id,
     name: c.name,

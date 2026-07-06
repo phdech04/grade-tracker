@@ -19,6 +19,7 @@ function course(): Course {
       { id: "mid", name: "Midterm", weight: 30, items: [{ id: "m", label: "Midterm" }] },
     ],
     hurdles: [],
+    events: [],
     createdAt: 0,
     updatedAt: 0,
   };

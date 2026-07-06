@@ -1,16 +1,17 @@
 import type { AppData, Course } from "../types";
-import { migrateV1, type AppDataV1 } from "./migrate";
+import { migrateV1, migrateV2, type AppDataV1, type AppDataV2 } from "./migrate";
 
-// The key predates the v2 schema; the `version` field inside distinguishes.
+// The key predates later schema versions; the `version` field inside distinguishes.
 const DATA_KEY = "grade-tracker:data:v1";
 
-const empty: AppData = { version: 2, courses: [] };
+const empty: AppData = { version: 3, courses: [] };
 
 function coerce(parsed: unknown): AppData | null {
   const p = parsed as { version?: number; courses?: unknown };
   if (!p || !Array.isArray(p.courses)) return null;
-  if (p.version === 2) return p as AppData;
-  if (p.version === 1) return migrateV1(p as AppDataV1);
+  if (p.version === 3) return p as AppData;
+  if (p.version === 2) return migrateV2(p as AppDataV2);
+  if (p.version === 1) return migrateV2(migrateV1(p as AppDataV1));
   return null;
 }
 

@@ -11,6 +11,7 @@ function course(components: Component[]): Course {
     name: "Test",
     components,
     hurdles: [],
+    events: [],
     createdAt: 0,
     updatedAt: 0,
   };

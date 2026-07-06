@@ -98,6 +98,7 @@ function toResult(ex: Extracted): ExtractionResult {
     term: ex.term || undefined,
     components: (ex.components || []).map(toComponent),
     hurdles: (ex.hurdles || []).filter(Boolean).map((d) => ({ id: uid(), description: d })),
+    events: [],
     notes: ex.notes || undefined,
     createdAt: Date.now(),
     updatedAt: Date.now(),

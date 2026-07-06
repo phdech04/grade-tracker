@@ -14,6 +14,7 @@ function blankCourse(): Course {
     name: "New course",
     components: [],
     hurdles: [],
+    events: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

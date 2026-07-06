@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { Course } from "../types";
 import { gradeSummary } from "../lib/grades";
 import { pct } from "../lib/format";
@@ -11,41 +12,136 @@ interface Props {
 }
 
 export function Dashboard({ courses, onOpen, onImport, onNewBlank }: Props) {
+  const actions = (
+    <div className="flex shrink-0 gap-2">
+      <button onClick={onNewBlank} className="btn-ghost">
+        Add manually
+      </button>
+      <button onClick={onImport} className="btn-accent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Upload outline
+      </button>
+    </div>
+  );
+
+  if (courses.length === 0) {
+    return (
+      <div>
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="label text-accent">Your term at a glance</p>
+            <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
+              Grades, kept honest.
+            </h1>
+            <p className="mt-2 max-w-lg text-ink-soft">
+              Drop in a course outline and Tally builds the grading scheme for you. Enter marks as
+              they land; watch where you stand and what it takes to land your target.
+            </p>
+          </div>
+          {actions}
+        </div>
+        <EmptyState onImport={onImport} onNewBlank={onNewBlank} />
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="label text-accent">Your term at a glance</p>
-          <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-            Grades, kept honest.
+          <p className="label text-accent">Term overview</p>
+          <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">
+            Where you stand
           </h1>
-          <p className="mt-2 max-w-lg text-ink-soft">
-            Drop in a course outline and Tally builds the grading scheme for you. Enter marks as
-            they land; watch where you stand and what it takes to land your target.
-          </p>
         </div>
-        <div className="flex shrink-0 gap-2">
-          <button onClick={onNewBlank} className="btn-ghost">
-            Add manually
-          </button>
-          <button onClick={onImport} className="btn-accent">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Upload outline
-          </button>
-        </div>
+        {actions}
       </div>
 
-      {courses.length === 0 ? (
-        <EmptyState onImport={onImport} onNewBlank={onNewBlank} />
-      ) : (
-        <div className="mt-9 grid gap-5 sm:grid-cols-2">
-          {courses.map((c) => (
-            <CourseCard key={c.id} course={c} onOpen={() => onOpen(c.id)} />
-          ))}
-        </div>
+      <TermSummary courses={courses} />
+
+      <div className="mt-6 grid gap-5 sm:grid-cols-2">
+        {courses.map((c) => (
+          <CourseCard key={c.id} course={c} onOpen={() => onOpen(c.id)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TermSummary({ courses }: { courses: Course[] }) {
+  const stats = useMemo(() => {
+    let projSum = 0;
+    let projW = 0;
+    let gradedSum = 0;
+    let gradedW = 0;
+    let onTarget = 0;
+    let withTarget = 0;
+    for (const c of courses) {
+      const s = gradeSummary(c);
+      const w = c.credits && c.credits > 0 ? c.credits : 1;
+      if (s.projected !== null && s.anyGraded) {
+        projSum += s.projected * w;
+        projW += w;
+      }
+      gradedSum += s.weightCompleted * w;
+      gradedW += w;
+      if (c.targetGrade != null && s.projected != null) {
+        withTarget++;
+        if (s.projected >= c.targetGrade - 0.05) onTarget++;
+      }
+    }
+    return {
+      projected: projW > 0 ? projSum / projW : null,
+      graded: gradedW > 0 ? gradedSum / gradedW : 0,
+      onTarget,
+      withTarget,
+      anyCredits: courses.some((c) => c.credits && c.credits > 0),
+    };
+  }, [courses]);
+
+  return (
+    <div className="card mt-6 flex flex-wrap items-center gap-x-10 gap-y-4 px-6 py-5">
+      <TermStat label="Projected average" value={pct(stats.projected, 1)} accent />
+      <TermStat label="Graded so far" value={pct(stats.graded, 0)} />
+      {stats.withTarget > 0 && (
+        <TermStat
+          label="On track"
+          value={`${stats.onTarget} of ${stats.withTarget}`}
+          good={stats.onTarget === stats.withTarget}
+        />
       )}
+      <p className="ml-auto max-w-48 text-[11px] leading-snug text-ink-faint">
+        {stats.anyCredits
+          ? "Averages weighted by course credits."
+          : "Averages weight every course equally — set credits on a course to change that."}
+      </p>
+    </div>
+  );
+}
+
+function TermStat({
+  label,
+  value,
+  accent,
+  good,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  good?: boolean;
+}) {
+  return (
+    <div>
+      <p className="label">{label}</p>
+      <p
+        className={`mt-0.5 font-display text-3xl font-semibold tabular-nums ${
+          accent ? "text-accent" : good ? "text-good" : ""
+        }`}
+      >
+        {value}
+      </p>
     </div>
   );
 }

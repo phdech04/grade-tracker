@@ -167,7 +167,7 @@ export async function extractCourse(file: File): Promise<ExtractionResult> {
 
   if (res.status === 404) {
     throw new Error(
-      "Extraction service not found. Running locally? Use `vercel dev` — plain `npm run dev` doesn't run the /api function.",
+      "Extraction service not found. Restart the dev server (`npm run dev`) or check that /api/extract is deployed.",
     );
   }
 

@@ -106,6 +106,17 @@ interface Res {
   json: (body: unknown) => void;
 }
 
+interface ExtractRequestBody {
+  kind?: string;
+  data?: string;
+  text?: string;
+}
+
+interface GeminiResponse {
+  error?: { message?: string };
+  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+}
+
 export default async function handler(req: Req, res: Res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed." });
@@ -115,12 +126,13 @@ export default async function handler(req: Req, res: Res) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
     res.status(500).json({
-      error: "Server is missing GEMINI_API_KEY. Add it in your Vercel project settings (or .env.local for `vercel dev`).",
+      error: "Server is missing GEMINI_API_KEY. Add it to .env.local (copy .env.example) and restart the dev server — or set it in your Vercel project settings.",
     });
     return;
   }
 
-  const body = typeof req.body === "string" ? safeParse(req.body) : req.body || {};
+  const parsedBody: unknown = typeof req.body === "string" ? safeParse(req.body) : req.body;
+  const body = (parsedBody as ExtractRequestBody) || {};
 
   const parts: Array<Record<string, unknown>> = [];
   if (body.kind === "pdf" && body.data) {
@@ -152,9 +164,9 @@ export default async function handler(req: Req, res: Res) {
     return;
   }
 
-  const json: any = await gem.json().catch(() => ({}));
+  const json = (await gem.json().catch(() => ({}))) as GeminiResponse;
   if (!gem.ok) {
-    const msg = json?.error?.message as string | undefined;
+    const msg = json.error?.message;
     if (gem.status === 429) {
       res.status(429).json({ error: "Gemini free-tier rate limit hit. Wait a minute and try again." });
       return;
@@ -163,7 +175,7 @@ export default async function handler(req: Req, res: Res) {
     return;
   }
 
-  const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const text: string | undefined = json.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) {
     res.status(502).json({ error: "Gemini returned no grading scheme. Try a different file." });
     return;
@@ -177,7 +189,7 @@ export default async function handler(req: Req, res: Res) {
   res.status(200).json(parsed);
 }
 
-function safeParse(s: string): any {
+function safeParse(s: string): unknown {
   try {
     return JSON.parse(s);
   } catch {

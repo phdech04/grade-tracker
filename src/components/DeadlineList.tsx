@@ -1,24 +1,7 @@
 import type { CourseEvent, EventKind } from "../types";
 import { byDue, dueStatus, formatDue } from "../lib/dates";
+import { KIND_LABEL, KIND_OPTIONS } from "../lib/events";
 import { uid } from "../lib/storage";
-
-const KIND_OPTIONS: { value: EventKind; label: string }[] = [
-  { value: "assignment", label: "Assignment" },
-  { value: "quiz", label: "Quiz" },
-  { value: "exam", label: "Exam" },
-  { value: "project", label: "Project" },
-  { value: "lab", label: "Lab" },
-  { value: "other", label: "Other" },
-];
-
-const KIND_LABEL: Record<EventKind, string> = {
-  assignment: "Assignment",
-  quiz: "Quiz",
-  exam: "Exam",
-  project: "Project",
-  lab: "Lab",
-  other: "Task",
-};
 
 interface Props {
   events: CourseEvent[];

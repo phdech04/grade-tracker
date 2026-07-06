@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { Course } from "../types";
 import { gradeSummary } from "../lib/grades";
 import { pct } from "../lib/format";
+import { byDue, dueStatus, formatDue, todayISO } from "../lib/dates";
 import { GradeRing } from "./GradeRing";
 
 interface Props {
@@ -12,6 +13,8 @@ interface Props {
 }
 
 export function Dashboard({ courses, onOpen, onImport, onNewBlank }: Props) {
+  const today = useMemo(() => todayISO(), []);
+
   const actions = (
     <div className="flex shrink-0 gap-2">
       <button onClick={onNewBlank} className="btn-ghost">
@@ -63,7 +66,7 @@ export function Dashboard({ courses, onOpen, onImport, onNewBlank }: Props) {
 
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
         {courses.map((c) => (
-          <CourseCard key={c.id} course={c} onOpen={() => onOpen(c.id)} />
+          <CourseCard key={c.id} course={c} today={today} onOpen={() => onOpen(c.id)} />
         ))}
       </div>
     </div>
@@ -146,10 +149,21 @@ function TermStat({
   );
 }
 
-function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) {
+function CourseCard({
+  course,
+  today,
+  onOpen,
+}: {
+  course: Course;
+  today: string;
+  onOpen: () => void;
+}) {
   const s = gradeSummary(course);
   const target = course.targetGrade;
   const onTrack = target != null && s.projected != null ? s.projected >= target - 0.05 : null;
+  const nextDue = course.events
+    .filter((e) => !e.done && e.due)
+    .sort(byDue)[0];
 
   return (
     <button
@@ -184,6 +198,22 @@ function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) 
             >
               <span className="h-1.5 w-1.5 rounded-full bg-current" />
               {onTrack ? "On track" : "Behind"} · target {target}%
+            </span>
+          </div>
+        )}
+
+        {nextDue && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs">
+            <svg className="shrink-0 text-ink-faint" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            <span
+              className={`min-w-0 truncate ${
+                dueStatus(nextDue.due, today) === "overdue" ? "font-semibold text-bad" : "text-ink-soft"
+              }`}
+            >
+              {nextDue.title} · {formatDue(nextDue.due!, today)}
             </span>
           </div>
         )}

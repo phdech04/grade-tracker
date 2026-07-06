@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Course } from "../types";
 import {
   applyConfirmations,
@@ -6,6 +6,8 @@ import {
   type ExtractionResult,
 } from "../lib/extract";
 import { totalWeight } from "../lib/grades";
+import { formatDue, todayISO } from "../lib/dates";
+import { KIND_LABEL } from "../lib/events";
 
 interface Props {
   onCancel: () => void;
@@ -147,11 +149,25 @@ function ReviewBody({
     ),
   );
   const [acked, setAcked] = useState<Record<string, boolean>>({});
+  // Dates the user fills for deadlines the extractor couldn't resolve.
+  const [eventDates, setEventDates] = useState<Record<string, string>>({});
+  const today = useMemo(() => todayISO(), []);
 
   const notes = confirmations.filter((c) => c.field === "note");
   const numeric = confirmations.filter((c) => c.field !== "note");
   const allAcked = notes.every((c) => acked[c.id]);
   const tw = totalWeight(course);
+
+  /** Apply confirmation answers, then fold in any dates typed for unresolved deadlines. */
+  const buildCourse = (): Course => {
+    const c = applyConfirmations(course, confirmations, answers);
+    return {
+      ...c,
+      events: c.events.map((e) =>
+        eventDates[e.id] ? { ...e, due: eventDates[e.id], dueRaw: undefined } : e,
+      ),
+    };
+  };
 
   return (
     <div>
@@ -264,6 +280,47 @@ function ReviewBody({
         </div>
       )}
 
+      {course.events.length > 0 && (
+        <div className="mt-4">
+          <p className="label mb-2">Deadlines found</p>
+          <ul className="divide-y divide-line/60 overflow-hidden rounded-xl border border-line">
+            {course.events.map((e) => (
+              <li key={e.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                <span className="shrink-0 rounded bg-paper-sunk px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
+                  {KIND_LABEL[e.kind]}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{e.title}</span>
+                {e.due ? (
+                  <span className="shrink-0 text-xs tabular-nums text-ink-soft">
+                    {formatDue(e.due, today)}
+                  </span>
+                ) : (
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {e.dueRaw && (
+                      <span className="text-xs italic text-ink-faint" title="Detected phrase">
+                        “{e.dueRaw}”
+                      </span>
+                    )}
+                    <input
+                      type="date"
+                      value={eventDates[e.id] ?? ""}
+                      onChange={(ev) =>
+                        setEventDates((d) => ({ ...d, [e.id]: ev.target.value }))
+                      }
+                      className="rounded border border-line bg-paper-card px-2 py-1 text-xs tabular-nums outline-none focus:border-accent"
+                      title="Set a date (optional)"
+                    />
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs text-ink-faint">
+            Undated items save without a date — you can set it on the course page anytime.
+          </p>
+        </div>
+      )}
+
       {course.hurdles.length > 0 && (
         <div className="mt-3 rounded-lg bg-paper-sunk/50 px-3 py-2 text-xs text-ink-soft">
           <span className="font-semibold">Pass requirements: </span>
@@ -280,7 +337,7 @@ function ReviewBody({
           Re-upload
         </button>
         <button
-          onClick={() => onSave(applyConfirmations(course, confirmations, answers))}
+          onClick={() => onSave(buildCourse())}
           disabled={!allAcked}
           className="btn-accent disabled:cursor-not-allowed disabled:opacity-50"
           title={allAcked ? undefined : "Tick the checkboxes above first"}

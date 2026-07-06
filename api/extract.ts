@@ -7,14 +7,19 @@ const MODEL = "gemini-2.5-flash"; // free tier; swap to "gemini-2.0-flash" if ne
 
 const SYSTEM = `You extract grading schemes from university course outlines into a strict JSON structure.
 
-Read the outline and identify every graded assessment category and its weight. Be precise:
-- "2% each" with 3 assignments => itemCount 3, weight 6 (percentage mode).
+Read the outline and identify every graded assessment category and its weight. Weights are unit-agnostic — use the outline's own numbers:
+- Percentage schemes: weight = the category's TOTAL share ("2% each" x3 assignments => itemCount 3, weight 6). Non-linked components should sum to ~100.
+- Points-based schemes ("total of 80 points"): weight = the category's total points (8 quizzes x 3 points => itemCount 8, weight 24).
 - "best 9 of 11" => itemCount 11, dropKind keepBest, dropCount 9.
 - "lowest 2 not counted" => dropKind dropLowest, dropCount 2.
-- "midterm OR final, whichever is better" => two components with the same linkGroupId.
-- A points-based course ("total of 80 points, grade = your points / 80") => scoreMode points, pointsPerItem set per category, weight 0.
+- "midterm OR final, whichever is better" => two components with the same linkGroupId and the same weight.
 - Ignore ungraded items (e.g. "Introduce yourself — ungraded").
-Put the percentage weights so non-linked components sum to ~100. When unsure or estimating (e.g. variable pop-quiz counts), say so in needsReview.`;
+
+Never guess silently. When the outline is ambiguous or conflicting, still fill in your best value AND add an entry to confirmations:
+- Variable counts ("4-12 pop quizzes"): field "itemCount", componentIndex of that component, suggestion = your estimate, choices [], question quoting the outline.
+- Conflicting numbers (a table says 30 but the text says 35): field "weight", choices = the conflicting values, suggestion = the likelier one.
+- Ambiguity with no numeric answer: field "note", componentIndex -1, suggestion 0, choices [].
+componentIndex is the 0-based index into components, or -1 for course-level notes. Return an empty confirmations array when nothing is ambiguous.`;
 
 const SCHEMA = {
   type: "OBJECT",
@@ -22,12 +27,6 @@ const SCHEMA = {
     name: { type: "STRING", description: "Full course name." },
     code: { type: "STRING", description: "Course code, e.g. AMATH 250. Empty if unknown." },
     term: { type: "STRING", description: "Term, e.g. Spring 2026. Empty if unknown." },
-    scoreMode: {
-      type: "STRING",
-      enum: ["percentage", "points"],
-      description:
-        "'percentage' when components have percentage weights summing to ~100. 'points' when the whole course is scored out of a point total.",
-    },
     components: {
       type: "ARRAY",
       description: "One entry per assessment category in the grading scheme.",
@@ -38,15 +37,11 @@ const SCHEMA = {
           weight: {
             type: "NUMBER",
             description:
-              "percentage mode: this category's TOTAL share of the final grade (e.g. quizzes 7% each x2 => 14). points mode: 0.",
+              "The category's total share of the final grade, in the outline's own unit (percent or points).",
           },
           itemCount: {
             type: "INTEGER",
             description: "How many individual assessments are in this category. Best estimate for variable counts.",
-          },
-          pointsPerItem: {
-            type: "NUMBER",
-            description: "points mode: points each item is worth. percentage mode: 100.",
           },
           dropKind: {
             type: "STRING",
@@ -57,12 +52,38 @@ const SCHEMA = {
           linkGroupId: {
             type: "STRING",
             description:
-              "Same id on two+ components that are alternatives ('whichever is better'). Empty otherwise. In percentage mode give linked components the SAME weight.",
+              "Same id on two+ components that are alternatives ('whichever is better'). Empty otherwise. Give linked components the SAME weight.",
           },
-          needsReview: { type: "STRING", description: "If anything was ambiguous or estimated, explain briefly. Else empty." },
         },
-        required: ["name", "weight", "itemCount", "pointsPerItem", "dropKind", "dropCount", "linkGroupId", "needsReview"],
-        propertyOrdering: ["name", "weight", "itemCount", "pointsPerItem", "dropKind", "dropCount", "linkGroupId", "needsReview"],
+        required: ["name", "weight", "itemCount", "dropKind", "dropCount", "linkGroupId"],
+        propertyOrdering: ["name", "weight", "itemCount", "dropKind", "dropCount", "linkGroupId"],
+      },
+    },
+    confirmations: {
+      type: "ARRAY",
+      description: "Questions the user must confirm because the outline was ambiguous or conflicting. Empty when unambiguous.",
+      items: {
+        type: "OBJECT",
+        properties: {
+          componentIndex: {
+            type: "INTEGER",
+            description: "0-based index into components, or -1 for a course-level note.",
+          },
+          field: {
+            type: "STRING",
+            enum: ["itemCount", "weight", "note"],
+            description: "Which value the answer applies to. 'note' = no numeric answer, just needs acknowledging.",
+          },
+          question: { type: "STRING", description: "Short question for the user, quoting the outline." },
+          suggestion: { type: "NUMBER", description: "Your best-guess answer. 0 for notes." },
+          choices: {
+            type: "ARRAY",
+            items: { type: "NUMBER" },
+            description: "The conflicting values when the outline states more than one. Empty otherwise.",
+          },
+        },
+        required: ["componentIndex", "field", "question", "suggestion", "choices"],
+        propertyOrdering: ["componentIndex", "field", "question", "suggestion", "choices"],
       },
     },
     hurdles: {
@@ -72,8 +93,8 @@ const SCHEMA = {
     },
     notes: { type: "STRING", description: "Any other useful context. Empty if none." },
   },
-  required: ["name", "code", "term", "scoreMode", "components", "hurdles", "notes"],
-  propertyOrdering: ["name", "code", "term", "scoreMode", "components", "hurdles", "notes"],
+  required: ["name", "code", "term", "components", "confirmations", "hurdles", "notes"],
+  propertyOrdering: ["name", "code", "term", "components", "confirmations", "hurdles", "notes"],
 };
 
 interface Req {

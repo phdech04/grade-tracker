@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import type { Component, Course } from "../types";
+import type { Component, Course, CourseEvent } from "../types";
 import { gradeSummary, requiredAverage, totalWeight } from "../lib/grades";
 import { pct } from "../lib/format";
+import { todayISO } from "../lib/dates";
 import { uid } from "../lib/storage";
 import { GradeRing } from "./GradeRing";
 import { ComponentCard } from "./ComponentCard";
+import { DeadlineList } from "./DeadlineList";
 
 interface Props {
   course: Course;
@@ -40,8 +42,11 @@ export function CourseDetail({ course, onChange, onDelete, onBack }: Props) {
   const summary = useMemo(() => gradeSummary(course), [course]);
   const tw = useMemo(() => totalWeight(course), [course]);
   const showNormalized = Math.abs(tw - 100) >= 0.5;
+  const today = useMemo(() => todayISO(), []);
 
   const patch = (p: Partial<Course>) => onChange({ ...course, ...p });
+
+  const setEvents = (events: CourseEvent[]) => patch({ events });
 
   const updateComponent = (id: string, p: Partial<Component>) =>
     patch({ components: course.components.map((c) => (c.id === id ? { ...c, ...p } : c)) });
@@ -237,6 +242,14 @@ export function CourseDetail({ course, onChange, onDelete, onBack }: Props) {
                 : "%"}
             </p>
           )}
+
+          <DeadlineList
+            events={course.events}
+            components={course.components.map((c) => ({ id: c.id, name: c.name }))}
+            editing={editing}
+            today={today}
+            onChange={setEvents}
+          />
 
           <Hurdles course={course} editing={editing} onChange={patch} />
 

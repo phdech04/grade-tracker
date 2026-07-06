@@ -5,17 +5,13 @@
 //   - per-item categories (R Assignments 2% each x3)
 //   - drop-lowest / best-N-of-M (best 9 of 11)
 //   - "whichever is better" between components (midterm vs final) via linkGroupId
-//   - points-based whole-course schemes (scoreMode "points")
-
-export type ScoreMode = "percentage" | "points";
+//   - points-based schemes (weights are unit-agnostic; only ratios matter)
 
 export interface Item {
   id: string;
   label: string;
-  /** Raw score the user earned. undefined until entered. */
+  /** Percentage earned on this item (88 = 88%). >100 allowed (bonus). undefined = ungraded. */
   score?: number;
-  /** Maximum possible raw score for this item (default 100 in percentage mode). */
-  max: number;
 }
 
 /** best-of: keep the top `keep` items. drop-lowest: drop the worst `dropLowest`. */
@@ -27,10 +23,8 @@ export interface Component {
   id: string;
   name: string;
   /**
-   * percentage mode: this component's share of the final grade (the weights of
-   * all non-linked components should sum to ~100).
-   * points mode: ignored for weighting (weight is derived from total points),
-   * but retained for display.
+   * This component's share of the final grade, in whatever unit the syllabus
+   * uses (percent or points). The engine normalizes — only ratios matter.
    */
   weight: number;
   items: Item[];
@@ -38,12 +32,9 @@ export interface Component {
   drop?: DropRule;
   /**
    * Components that share a linkGroupId form a "whichever is better" group:
-   * their combined weight goes to whichever component is currently scoring
-   * higher (per unit weight). undefined => standalone component.
+   * only the member currently scoring higher counts. undefined => standalone.
    */
   linkGroupId?: string;
-  /** Surfaced on the review screen when the extractor was unsure. */
-  needsReview?: string;
 }
 
 export interface Hurdle {
@@ -57,9 +48,10 @@ export interface Course {
   name: string;
   code?: string;
   term?: string;
-  scoreMode: ScoreMode;
   /** Desired final grade, e.g. 85. */
   targetGrade?: number;
+  /** Optional credit weight used by the term average. */
+  credits?: number;
   components: Component[];
   hurdles: Hurdle[];
   notes?: string;
@@ -68,6 +60,6 @@ export interface Course {
 }
 
 export interface AppData {
-  version: 1;
+  version: 2;
   courses: Course[];
 }

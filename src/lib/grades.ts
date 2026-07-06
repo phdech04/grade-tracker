@@ -3,14 +3,11 @@ import type { Component, Course, DropRule, Item } from "../types";
 // ---------------------------------------------------------------------------
 // Grade engine
 //
-// Everything reduces to a "slot" model. Each component contributes some amount
-// of EARNED weight out of a DENOMINATOR of weight. The final grade is
-// earned / denom. This unifies:
-//   - percentage mode: a component's weight is split evenly across the items
-//     that count (weight / countTarget per slot); each graded item earns
-//     (score/max) of its slot.
-//   - points mode: each item's max is its slot weight and its score is what it
-//     earns; the final grade is total earned points / total possible points.
+// Every component contributes some amount of EARNED weight out of a
+// DENOMINATOR of weight; the final grade is earned / denom. A component's
+// weight is split evenly across the items that count (weight / countTarget
+// per slot) and a graded item earns (score / 100) of its slot. Weights are
+// unit-agnostic — percent and points schemes reduce to the same ratios.
 //
 // Drop rules (best-N-of-M, drop-lowest) pick which items count. "Whichever is
 // better" link groups are resolved by trying each member and keeping the
@@ -36,7 +33,7 @@ interface Contribution {
   gradedCount: number;
   countedGradedCount: number;
   totalCounted: number;
-  /** Average fraction (0..1) of the counted graded items, or null if none. */
+  /** Average fraction (0..1+) of the counted graded items, or null if none. */
   currentFraction: number | null;
 }
 
@@ -46,69 +43,39 @@ interface Contribution {
  *              number    => fill remaining counting slots at this fraction
  *                           (projection / best / worst case).
  */
-function contribution(
-  component: Component,
-  mode: Course["scoreMode"],
-  fill: Fill,
-): Contribution {
-  const items = component.items;
-  const n = items.length;
+function contribution(component: Component, fill: Fill): Contribution {
+  const n = component.items.length;
   const target = countTarget(component.drop, n);
 
-  const graded = items.filter(isEntered);
-  // Rank graded items best-first by fraction, so drop rules drop the worst.
-  const gradedFracs = graded
-    .map((it) => ({ frac: it.score! / (it.max || 1), score: it.score!, max: it.max || 1 }))
-    .sort((a, b) => b.frac - a.frac);
+  const graded = component.items.filter(isEntered);
+  // Rank graded items best-first, so drop rules drop the worst.
+  const fracs = graded.map((it) => it.score! / 100).sort((a, b) => b - a);
+  const kept = fracs.slice(0, Math.min(target, fracs.length));
 
-  const keptGraded = gradedFracs.slice(0, Math.min(target, gradedFracs.length));
-  const countedGradedCount = keptGraded.length;
-
-  let earnedGraded = 0;
-  let pointsGraded = 0;
-  let perSlot: number; // weight of a single counting slot
-
-  if (mode === "percentage") {
-    perSlot = target > 0 ? component.weight / target : 0;
-    for (const g of keptGraded) {
-      earnedGraded += g.frac * perSlot;
-      pointsGraded += perSlot;
-    }
-  } else {
-    // points mode: slot weight is the item's max
-    const avgMax =
-      (keptGraded.length ? keptGraded : gradedFracs).reduce((s, g) => s + g.max, 0) /
-        Math.max(1, (keptGraded.length ? keptGraded : gradedFracs).length) || 100;
-    perSlot = avgMax;
-    for (const g of keptGraded) {
-      earnedGraded += g.score;
-      pointsGraded += g.max;
-    }
-  }
-
-  const currentFraction = countedGradedCount > 0 ? earnedGraded / pointsGraded : null;
+  const perSlot = target > 0 ? component.weight / target : 0;
+  let earned = 0;
+  for (const f of kept) earned += f * perSlot;
+  const denomGraded = kept.length * perSlot;
+  const currentFraction = denomGraded > 0 ? earned / denomGraded : null;
 
   if (fill === "graded") {
     return {
-      earned: earnedGraded,
-      denom: pointsGraded,
+      earned,
+      denom: denomGraded,
       gradedCount: graded.length,
-      countedGradedCount,
+      countedGradedCount: kept.length,
       totalCounted: target,
       currentFraction,
     };
   }
 
   // Full-course view: fill the remaining counting slots at `fill` fraction.
-  const remainingSlots = Math.max(0, target - countedGradedCount);
-  const earnedRemaining = remainingSlots * fill * perSlot;
-  const denomRemaining = remainingSlots * perSlot;
-
+  const remaining = Math.max(0, target - kept.length);
   return {
-    earned: earnedGraded + earnedRemaining,
-    denom: pointsGraded + denomRemaining,
+    earned: earned + remaining * fill * perSlot,
+    denom: denomGraded + remaining * perSlot,
     gradedCount: graded.length,
-    countedGradedCount,
+    countedGradedCount: kept.length,
     totalCounted: target,
     currentFraction,
   };
@@ -162,17 +129,13 @@ interface AggregateResult {
  * Aggregate the course under a fill strategy, choosing link-group members to
  * MAXIMISE the resulting grade ("whichever is better").
  */
-function aggregate(
-  course: Course,
-  fill: (c: Component) => Fill,
-): AggregateResult {
+function aggregate(course: Course, fill: (c: Component) => Fill): AggregateResult {
   const { standalone, groups } = partition(course);
 
-  // Standalone contribution is fixed.
   let baseEarned = 0;
   let baseDenom = 0;
   for (const c of standalone) {
-    const r = contribution(c, course.scoreMode, fill(c));
+    const r = contribution(c, fill(c));
     baseEarned += r.earned;
     baseDenom += r.denom;
   }
@@ -184,7 +147,7 @@ function aggregate(
     const chosen = [...standalone];
     sel.forEach((memberIdx, gi) => {
       const member = groups[gi].members[memberIdx];
-      const r = contribution(member, course.scoreMode, fill(member));
+      const r = contribution(member, fill(member));
       earned += r.earned;
       denom += r.denom;
       chosen.push(member);
@@ -199,11 +162,11 @@ function aggregate(
 
 export interface ComponentSummary {
   component: Component;
-  currentFraction: number | null; // 0..1 over graded counted items
+  currentFraction: number | null; // 0..1+ over graded counted items
   gradedCount: number;
   totalItems: number;
   countedItems: number;
-  weight: number; // share of final grade in % (derived in points mode)
+  weight: number; // normalized share of the final grade in %
   earnedWeight: number; // % points earned so far from this component
 }
 
@@ -219,6 +182,8 @@ export interface GradeSummary {
   /** Worst final grade (0% on everything remaining). */
   worstCase: number;
   components: ComponentSummary[];
+  /** Ids of components counting right now (standalone + winning link-group members). */
+  countingIds: string[];
   anyGraded: boolean;
 }
 
@@ -233,7 +198,7 @@ export function gradeSummary(course: Course): GradeSummary {
   const weightCompleted = full.denom > 0 ? (graded.denom / full.denom) * 100 : 0;
 
   const projectedAgg = aggregate(course, (c) => {
-    const r = contribution(c, course.scoreMode, "graded");
+    const r = contribution(c, "graded");
     return r.currentFraction ?? currentFrac;
   });
   const projected = projectedAgg.denom > 0 ? (projectedAgg.earned / projectedAgg.denom) * 100 : null;
@@ -245,18 +210,16 @@ export function gradeSummary(course: Course): GradeSummary {
   // Per-component summaries for display (weights normalised to % of course).
   const fullDenom = full.denom || 1;
   const components: ComponentSummary[] = course.components.map((c) => {
-    const r = contribution(c, course.scoreMode, "graded");
-    const fullC = contribution(c, course.scoreMode, 1);
-    const weightPct = (fullC.denom / fullDenom) * 100;
-    const earnedWeightPct = (r.earned / fullDenom) * 100;
+    const r = contribution(c, "graded");
+    const fullC = contribution(c, 1);
     return {
       component: c,
       currentFraction: r.currentFraction,
       gradedCount: r.gradedCount,
       totalItems: c.items.length,
       countedItems: r.totalCounted,
-      weight: weightPct,
-      earnedWeight: earnedWeightPct,
+      weight: (fullC.denom / fullDenom) * 100,
+      earnedWeight: (r.earned / fullDenom) * 100,
     };
   });
 
@@ -267,6 +230,7 @@ export function gradeSummary(course: Course): GradeSummary {
     bestCase,
     worstCase,
     components,
+    countingIds: graded.chosen.map((c) => c.id),
     anyGraded: graded.denom > 0,
   };
 }
@@ -286,7 +250,7 @@ export interface RequiredResult {
  */
 export function requiredAverage(course: Course, target: number): RequiredResult {
   const projectedAgg = aggregate(course, (c) => {
-    const r = contribution(c, course.scoreMode, "graded");
+    const r = contribution(c, "graded");
     return r.currentFraction ?? 0;
   });
   const chosen = projectedAgg.chosen;
@@ -295,8 +259,8 @@ export function requiredAverage(course: Course, target: number): RequiredResult 
   let totalDenom = 0;
   let remainingDenom = 0;
   for (const c of chosen) {
-    const g = contribution(c, course.scoreMode, "graded");
-    const full = contribution(c, course.scoreMode, 1);
+    const g = contribution(c, "graded");
+    const full = contribution(c, 1);
     earnedGraded += g.earned;
     totalDenom += full.denom;
     remainingDenom += full.denom - g.denom;
@@ -321,11 +285,10 @@ export function requiredAverage(course: Course, target: number): RequiredResult 
   return { required, status, remainingWeight };
 }
 
-/** Total declared weight of percentage-mode components, for validation UI. */
+/** Total declared weight, counting each link group's shared slot once. */
 export function totalWeight(course: Course): number {
   const { standalone, groups } = partition(course);
   let sum = standalone.reduce((s, c) => s + (c.weight || 0), 0);
-  // A link group occupies a single shared weight slot.
   for (const g of groups) sum += g.members[0]?.weight || 0;
   return sum;
 }

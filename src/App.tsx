@@ -12,7 +12,6 @@ function blankCourse(): Course {
   return {
     id: uid(),
     name: "New course",
-    scoreMode: "percentage",
     components: [],
     hurdles: [],
     createdAt: Date.now(),

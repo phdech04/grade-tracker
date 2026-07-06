@@ -19,7 +19,16 @@ Never guess silently. When the outline is ambiguous or conflicting, still fill i
 - Variable counts ("4-12 pop quizzes"): field "itemCount", componentIndex of that component, suggestion = your estimate, choices [], question quoting the outline.
 - Conflicting numbers (a table says 30 but the text says 35): field "weight", choices = the conflicting values, suggestion = the likelier one.
 - Ambiguity with no numeric answer: field "note", componentIndex -1, suggestion 0, choices [].
-componentIndex is the 0-based index into components, or -1 for course-level notes. Return an empty confirmations array when nothing is ambiguous.`;
+componentIndex is the 0-based index into components, or -1 for course-level notes. Return an empty confirmations array when nothing is ambiguous.
+
+Separately, extract the assessment SCHEDULE into "assessments" — one entry per dated or gradeable piece of coursework (assignments, quizzes, tests, labs, projects, the final exam):
+- title: what it's called ("Assignment 3", "Midterm").
+- kind: one of assignment, quiz, exam, project, lab, other.
+- dueDate: the due/scheduled date as ISO "YYYY-MM-DD". Infer the year from the term when only a month and day are given. Leave it "" when the outline gives no concrete calendar date (e.g. "Week 6", "TBD", or only a weekly cadence).
+- dueRaw: the original date/timing phrase exactly as written ("Week 6", "Oct 14", "TBD"). Fill this whenever timing is mentioned, even if you also resolved dueDate.
+- weight: the % it is worth if stated, else 0.
+- componentName: the exact name of the grading component above that this assessment counts toward, if clear; else "".
+Enumerate individually only when the outline dates each occurrence (e.g. "Quiz 1 — Sep 12, Quiz 2 — Sep 26"); otherwise emit one entry. Return an empty assessments array if the outline has no schedule.`;
 
 const SCHEMA = {
   type: "OBJECT",
@@ -59,6 +68,38 @@ const SCHEMA = {
         propertyOrdering: ["name", "weight", "itemCount", "dropKind", "dropCount", "linkGroupId"],
       },
     },
+    assessments: {
+      type: "ARRAY",
+      description:
+        "The dated assessment schedule — assignments, tests, projects and their due dates. Empty if the outline lists no schedule.",
+      items: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING", description: "Name of the assessment, e.g. 'Assignment 3', 'Midterm'." },
+          kind: {
+            type: "STRING",
+            enum: ["assignment", "quiz", "exam", "project", "lab", "other"],
+            description: "Kind of coursework.",
+          },
+          dueDate: {
+            type: "STRING",
+            description:
+              "Due date as ISO 'YYYY-MM-DD', inferring the year from the term. Empty when no concrete date is given.",
+          },
+          dueRaw: {
+            type: "STRING",
+            description: "The original date/timing phrase as written ('Week 6', 'Oct 14', 'TBD'). Empty if none.",
+          },
+          weight: { type: "NUMBER", description: "Percent this assessment is worth if stated, else 0." },
+          componentName: {
+            type: "STRING",
+            description: "Exact name of the grading component it counts toward, if clear. Else empty.",
+          },
+        },
+        required: ["title", "kind", "dueDate", "dueRaw", "weight", "componentName"],
+        propertyOrdering: ["title", "kind", "dueDate", "dueRaw", "weight", "componentName"],
+      },
+    },
     confirmations: {
       type: "ARRAY",
       description: "Questions the user must confirm because the outline was ambiguous or conflicting. Empty when unambiguous.",
@@ -93,8 +134,8 @@ const SCHEMA = {
     },
     notes: { type: "STRING", description: "Any other useful context. Empty if none." },
   },
-  required: ["name", "code", "term", "components", "confirmations", "hurdles", "notes"],
-  propertyOrdering: ["name", "code", "term", "components", "confirmations", "hurdles", "notes"],
+  required: ["name", "code", "term", "components", "assessments", "confirmations", "hurdles", "notes"],
+  propertyOrdering: ["name", "code", "term", "components", "assessments", "confirmations", "hurdles", "notes"],
 };
 
 interface Req {

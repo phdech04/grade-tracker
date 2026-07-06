@@ -1,4 +1,4 @@
-import type { Component, Course, DropRule, Item } from "../types";
+import type { Component, Course, CourseEvent, DropRule, EventKind, Item } from "../types";
 import { uid } from "./storage";
 
 // Outline extraction. The actual LLM call (Google Gemini) happens server-side in
@@ -23,11 +23,22 @@ interface ExtractedConfirmation {
   choices: number[];
 }
 
-interface Extracted {
+interface ExtractedAssessment {
+  title: string;
+  kind: string;
+  dueDate: string; // ISO or ""
+  dueRaw: string; // raw phrase or ""
+  weight: number; // 0 if none
+  componentName: string; // "" if none
+}
+
+/** Raw shape returned by /api/extract. Exported for unit-testing the mapper. */
+export interface Extracted {
   name: string;
   code: string;
   term: string;
   components: ExtractedComponent[];
+  assessments: ExtractedAssessment[];
   confirmations: ExtractedConfirmation[];
   hurdles: string[];
   notes: string;
@@ -90,15 +101,52 @@ function toComponent(ec: ExtractedComponent): Component {
   };
 }
 
-function toResult(ex: Extracted): ExtractionResult {
+const EVENT_KINDS: EventKind[] = ["assignment", "quiz", "exam", "project", "lab", "other"];
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function normalizeKind(k: string): EventKind {
+  const v = (k || "").toLowerCase().trim();
+  return (EVENT_KINDS as string[]).includes(v) ? (v as EventKind) : "other";
+}
+
+/** Map one extracted assessment to a CourseEvent, soft-linking to a component by name. */
+function toEvent(ea: ExtractedAssessment, components: Component[]): CourseEvent {
+  const dueDate = (ea.dueDate || "").trim();
+  const due = ISO_DATE.test(dueDate) ? dueDate : undefined;
+  const raw = (ea.dueRaw || "").trim();
+
+  const wantName = (ea.componentName || "").trim().toLowerCase();
+  const match = wantName
+    ? components.find((c) => c.name.trim().toLowerCase() === wantName)
+    : undefined;
+
+  return {
+    id: uid(),
+    title: (ea.title || "").trim() || "Untitled",
+    kind: normalizeKind(ea.kind),
+    due,
+    // Keep the raw phrase only when we couldn't resolve a real date from it.
+    dueRaw: due ? undefined : raw || undefined,
+    weight: ea.weight && ea.weight > 0 ? ea.weight : undefined,
+    componentId: match?.id,
+    source: "outline",
+  };
+}
+
+export function toResult(ex: Extracted): ExtractionResult {
+  const components = (ex.components || []).map(toComponent);
+  const events = (ex.assessments || [])
+    .filter((a) => a && (a.title || "").trim())
+    .map((a) => toEvent(a, components));
+
   const course: Course = {
     id: uid(),
     name: ex.name || "Untitled course",
     code: ex.code || undefined,
     term: ex.term || undefined,
-    components: (ex.components || []).map(toComponent),
+    components,
     hurdles: (ex.hurdles || []).filter(Boolean).map((d) => ({ id: uid(), description: d })),
-    events: [],
+    events,
     notes: ex.notes || undefined,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -109,7 +157,7 @@ function toResult(ex: Extracted): ExtractionResult {
     .map((c) => ({
       id: uid(),
       componentIndex:
-        c.componentIndex >= 0 && c.componentIndex < course.components.length
+        c.componentIndex >= 0 && c.componentIndex < components.length
           ? c.componentIndex
           : null,
       field: c.field === "itemCount" || c.field === "weight" ? c.field : "note",

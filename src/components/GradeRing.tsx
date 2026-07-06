@@ -1,4 +1,4 @@
-import { gradeColor, letterGrade } from "../lib/format";
+import { gradeColor } from "../lib/format";
 
 interface Props {
   value: number | null; // 0..100
@@ -54,7 +54,7 @@ export function GradeRing({ value, size = 132, stroke = 11, track = null, label 
           {value === null ? "—" : Math.round(value)}
         </span>
         <span className="mt-1 text-xs font-semibold tracking-wide text-ink-faint">
-          {label ?? letterGrade(value)}
+          {label ?? (value === null ? "" : "%")}
         </span>
       </div>
     </div>

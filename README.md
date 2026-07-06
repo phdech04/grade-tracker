@@ -47,8 +47,9 @@ further, restrict the key by HTTP referrer in Google AI Studio / Cloud Console.
   Gemini (`gemini-2.5-flash`) with a structured-output schema, returns the scheme.
 - `src/lib/extract.ts` — POSTs the file to `/api/extract` and maps the result into
   a course template (PDF sent as base64; HTML stripped to text first).
-- `src/lib/grades.ts` — the calculation engine. Per-item weights, best-N-of-M /
-  drop-lowest, "whichever is better" linked components, points-based courses.
-  Covered by `src/lib/grades.test.ts`.
+- `src/lib/grades.ts` — the calculation engine. Items are scored as percentages;
+  component weights are unit-agnostic (percent or points — only the ratios
+  between them matter), with best-N-of-M / drop-lowest rules and "whichever is
+  better" linked components. Covered by `src/lib/grades.test.ts`.
 - `src/lib/storage.ts` — `localStorage` persistence + JSON export/import.
 - `src/components/` — dashboard, course detail, import/review, settings.

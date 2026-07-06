@@ -145,13 +145,30 @@ function aggregate(course: Course, fill: (c: Component) => Fill): AggregateResul
     let earned = baseEarned;
     let denom = baseDenom;
     const chosen = [...standalone];
+    let disqualified = false;
     sel.forEach((memberIdx, gi) => {
-      const member = groups[gi].members[memberIdx];
-      const r = contribution(member, fill(member));
+      const members = groups[gi].members;
+      const member = members[memberIdx];
+      const memberFill = fill(member);
+      const r = contribution(member, memberFill);
+      // For "current standing" (fill === "graded"), a completely ungraded
+      // member has denom 0 and so never drags the blended ratio down —
+      // which would let it "win" over a graded sibling purely by omission.
+      // Disqualify that selection whenever another member actually has
+      // graded work; the entered score should count until something better
+      // is entered, not get silently ignored in favor of a blank slate.
+      if (
+        memberFill === "graded" &&
+        r.gradedCount === 0 &&
+        members.some((m) => m !== member && contribution(m, "graded").gradedCount > 0)
+      ) {
+        disqualified = true;
+      }
       earned += r.earned;
       denom += r.denom;
       chosen.push(member);
     });
+    if (disqualified) continue;
     const pct = denom > 0 ? earned / denom : 0;
     const bestPct = best && best.denom > 0 ? best.earned / best.denom : -Infinity;
     if (!best || pct > bestPct) best = { earned, denom, chosen };

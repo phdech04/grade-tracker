@@ -150,6 +150,25 @@ describe("whichever-is-better link groups (AMath shape, migrated)", () => {
     expect(names).toContain("Midterm");
     expect(names).not.toContain("Final");
   });
+
+  it("counts the graded member, not a still-blank sibling, even when the blank one would raise the blended average", () => {
+    // Assignments is acing at 100%, so blending in the (lower-scoring)
+    // Midterm pulls the average down. A naive "maximise the blended ratio"
+    // selection would rather count nothing (pick the still-ungraded Final)
+    // than count the entered midterm score. The graded entry should win.
+    const c = course([
+      comp("Assignments", 60, [100]),
+      comp("Midterm", 20, [80], { linkGroupId: "exam" }),
+      comp("Final", 20, [undefined], { linkGroupId: "exam" }),
+    ]);
+    const s = gradeSummary(c);
+    const names = s.components
+      .filter((cs) => s.countingIds.includes(cs.component.id))
+      .map((cs) => cs.component.name);
+    expect(names).toContain("Midterm");
+    expect(names).not.toContain("Final");
+    approx(s.current, 95); // (60 + 0.8*20) / (60 + 20)
+  });
 });
 
 describe("percentage whichever-is-better (linked components share a weight slot)", () => {

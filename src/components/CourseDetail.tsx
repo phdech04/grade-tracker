@@ -1,9 +1,10 @@
-import { useMemo } from "react";
-import type { Component, Course, DropRule, Item } from "../types";
+import { useMemo, useState } from "react";
+import type { Component, Course } from "../types";
 import { gradeSummary, requiredAverage, totalWeight } from "../lib/grades";
-import { gradeColor, letterGrade, pct } from "../lib/format";
+import { pct } from "../lib/format";
 import { uid } from "../lib/storage";
 import { GradeRing } from "./GradeRing";
+import { ComponentCard } from "./ComponentCard";
 
 interface Props {
   course: Course;
@@ -12,9 +13,33 @@ interface Props {
   onBack: () => void;
 }
 
+/** Display blocks: standalone components, or a better-of group rendered together. */
+type Block =
+  | { kind: "single"; component: Component }
+  | { kind: "group"; id: string; members: Component[] };
+
+function buildBlocks(components: Component[]): Block[] {
+  const seen = new Set<string>();
+  const blocks: Block[] = [];
+  for (const c of components) {
+    if (!c.linkGroupId) {
+      blocks.push({ kind: "single", component: c });
+      continue;
+    }
+    if (seen.has(c.linkGroupId)) continue;
+    seen.add(c.linkGroupId);
+    const members = components.filter((m) => m.linkGroupId === c.linkGroupId);
+    if (members.length === 1) blocks.push({ kind: "single", component: c });
+    else blocks.push({ kind: "group", id: c.linkGroupId, members });
+  }
+  return blocks;
+}
+
 export function CourseDetail({ course, onChange, onDelete, onBack }: Props) {
+  const [editing, setEditing] = useState(false);
   const summary = useMemo(() => gradeSummary(course), [course]);
   const tw = useMemo(() => totalWeight(course), [course]);
+  const showNormalized = Math.abs(tw - 100) >= 0.5;
 
   const patch = (p: Partial<Course>) => onChange({ ...course, ...p });
 
@@ -32,14 +57,67 @@ export function CourseDetail({ course, onChange, onDelete, onBack }: Props) {
           id: uid(),
           name: "New component",
           weight: 0,
-          items: [{ id: uid(), label: "Item 1", max: course.scoreMode === "points" ? 10 : 100 }],
+          items: [{ id: uid(), label: "Item 1" }],
         },
       ],
     });
 
+  /** Pair `aId` with `otherId` ("whichever is better"), or unpair when null. */
+  const pairBetterOf = (aId: string, otherId: string | null) => {
+    const comps = course.components.map((c) => ({ ...c }));
+    const dissolve = (gid: string | undefined) => {
+      if (!gid) return;
+      for (const m of comps) if (m.linkGroupId === gid) delete m.linkGroupId;
+    };
+    const a = comps.find((c) => c.id === aId);
+    if (!a) return;
+    dissolve(a.linkGroupId);
+    if (otherId) {
+      const b = comps.find((c) => c.id === otherId);
+      if (b) {
+        dissolve(b.linkGroupId);
+        const gid = uid();
+        a.linkGroupId = gid;
+        b.linkGroupId = gid;
+      }
+    }
+    patch({ components: comps });
+  };
+
+  const blocks = buildBlocks(course.components);
+  const summaryFor = (id: string) => summary.components.find((cs) => cs.component.id === id);
+
+  const renderCard = (c: Component, counting: boolean | null) => {
+    const group = c.linkGroupId
+      ? course.components.filter((m) => m.linkGroupId === c.linkGroupId)
+      : [];
+    const pairedWithId =
+      group.length === 2 ? (group.find((m) => m.id !== c.id)?.id ?? null) : null;
+    return (
+      <ComponentCard
+        key={c.id}
+        component={c}
+        editing={editing}
+        summary={summaryFor(c.id)}
+        showNormalized={showNormalized}
+        counting={counting}
+        pairOptions={course.components
+          .filter((o) => o.id !== c.id)
+          .map((o) => ({ id: o.id, name: o.name }))}
+        pairedWithId={pairedWithId}
+        onChange={(p) => updateComponent(c.id, p)}
+        onRemove={() => removeComponent(c.id)}
+        onPair={(otherId) => pairBetterOf(c.id, otherId)}
+      />
+    );
+  };
+
   return (
     <div>
-      <button onClick={onBack} className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-ink-soft hover:text-accent">
+      <button
+        onClick={onBack}
+        className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-ink-soft hover:text-accent"
+      >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M15 18l-6-6 6-6" />
         </svg>
@@ -48,30 +126,70 @@ export function CourseDetail({ course, onChange, onDelete, onBack }: Props) {
 
       {/* Course header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              value={course.code ?? ""}
-              onChange={(e) => patch({ code: e.target.value })}
-              placeholder="CODE"
-              className="w-28 rounded bg-paper-sunk px-2 py-1 text-xs font-semibold uppercase tracking-wide text-ink-soft outline-none focus:ring-2 focus:ring-accent/20"
-            />
-            <input
-              value={course.term ?? ""}
-              onChange={(e) => patch({ term: e.target.value })}
-              placeholder="Term"
-              className="w-32 bg-transparent text-xs text-ink-faint outline-none"
-            />
-          </div>
-          <input
-            value={course.name}
-            onChange={(e) => patch({ name: e.target.value })}
-            className="mt-1 w-full bg-transparent font-display text-3xl font-semibold tracking-tight outline-none placeholder:text-ink-faint"
-            placeholder="Course name"
-          />
+        <div className="min-w-0 flex-1">
+          {editing ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={course.code ?? ""}
+                  onChange={(e) => patch({ code: e.target.value || undefined })}
+                  placeholder="CODE"
+                  className="w-28 rounded bg-paper-sunk px-2 py-1 text-xs font-semibold uppercase tracking-wide text-ink-soft outline-none focus:ring-2 focus:ring-accent/20"
+                />
+                <input
+                  value={course.term ?? ""}
+                  onChange={(e) => patch({ term: e.target.value || undefined })}
+                  placeholder="Term"
+                  className="w-32 rounded bg-paper-sunk px-2 py-1 text-xs text-ink-soft outline-none focus:ring-2 focus:ring-accent/20"
+                />
+                <label className="flex items-center gap-1 text-xs text-ink-soft">
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.25}
+                    value={course.credits ?? ""}
+                    onChange={(e) =>
+                      patch({
+                        credits: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)),
+                      })
+                    }
+                    placeholder="—"
+                    className="w-16 rounded bg-paper-sunk px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-accent/20"
+                  />
+                  credits
+                </label>
+              </div>
+              <input
+                value={course.name}
+                onChange={(e) => patch({ name: e.target.value })}
+                className="mt-1 w-full bg-transparent font-display text-3xl font-semibold tracking-tight outline-none placeholder:text-ink-faint"
+                placeholder="Course name"
+              />
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                {course.code && (
+                  <span className="rounded bg-paper-sunk px-2 py-1 text-xs font-semibold uppercase tracking-wide text-ink-soft">
+                    {course.code}
+                  </span>
+                )}
+                {course.term && <span className="text-xs text-ink-faint">{course.term}</span>}
+                {course.credits != null && (
+                  <span className="text-xs text-ink-faint">{course.credits} credits</span>
+                )}
+              </div>
+              <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight">
+                {course.name}
+              </h1>
+            </>
+          )}
         </div>
-        <button onClick={onDelete} className="btn-ghost text-bad hover:bg-bad/5">
-          Delete
+        <button
+          onClick={() => setEditing((e) => !e)}
+          className={editing ? "btn-primary" : "btn-ghost"}
+        >
+          {editing ? "Done" : "Edit"}
         </button>
       </div>
 
@@ -80,41 +198,65 @@ export function CourseDetail({ course, onChange, onDelete, onBack }: Props) {
         <div className="order-2 lg:order-1">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-display text-lg font-semibold">Grading scheme</h2>
-            <ModePill course={course} onChange={patch} />
           </div>
 
           <div className="space-y-4">
-            {course.components.map((c) => (
-              <ComponentCard
-                key={c.id}
-                component={c}
-                scoreMode={course.scoreMode}
-                onChange={(p) => updateComponent(c.id, p)}
-                onRemove={() => removeComponent(c.id)}
-              />
-            ))}
+            {blocks.map((b) =>
+              b.kind === "single" ? (
+                renderCard(b.component, null)
+              ) : (
+                <div key={b.id} className="overflow-hidden rounded-xl2 border border-accent/25">
+                  <div className="bg-accent-wash px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-accent">
+                    Whichever is better counts
+                  </div>
+                  <div className="space-y-px bg-accent/10 [&>.card]:rounded-none [&>.card]:border-0">
+                    {b.members.map((m) => {
+                      const anyGraded = b.members.some((x) => x.items.some((it) => it.score != null));
+                      return renderCard(m, anyGraded ? summary.countingIds.includes(m.id) : null);
+                    })}
+                  </div>
+                </div>
+              ),
+            )}
           </div>
 
-          <button onClick={addComponent} className="btn-ghost mt-4 w-full border-dashed">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Add component
-          </button>
+          {editing && (
+            <button onClick={addComponent} className="btn-ghost mt-4 w-full border-dashed">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Add component
+            </button>
+          )}
 
-          {course.scoreMode === "percentage" && course.components.length > 0 && (
-            <p className={`mt-3 text-xs ${Math.abs(tw - 100) < 0.5 ? "text-ink-faint" : "text-warn"}`}>
-              Weights total {tw.toFixed(tw % 1 ? 1 : 0)}%
-              {Math.abs(tw - 100) >= 0.5 && " — should add up to 100%"}
+          {course.components.length > 0 && (
+            <p className={`mt-3 text-xs ${showNormalized ? "text-warn" : "text-ink-faint"}`}>
+              Weights total {tw.toFixed(tw % 1 ? 1 : 0)}
+              {showNormalized
+                ? " — not 100, so each share is normalized (shown on the cards)"
+                : "%"}
             </p>
           )}
 
-          <Hurdles course={course} onChange={patch} />
+          <Hurdles course={course} editing={editing} onChange={patch} />
+
+          {editing && (
+            <div className="mt-8 border-t border-line/70 pt-4">
+              <button
+                onClick={() => {
+                  if (confirm("Delete this course and all its marks?")) onDelete();
+                }}
+                className="btn-ghost text-bad hover:bg-bad/5"
+              >
+                Delete this course
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Right: live summary */}
         <aside className="order-1 space-y-4 lg:order-2 lg:sticky lg:top-24 lg:self-start">
-          <StandingCard course={course} summary={summary} />
+          <StandingCard summary={summary} />
           <TargetCard course={course} onChange={patch} />
         </aside>
       </div>
@@ -122,34 +264,27 @@ export function CourseDetail({ course, onChange, onDelete, onBack }: Props) {
   );
 }
 
-function ModePill({ course, onChange }: { course: Course; onChange: (p: Partial<Course>) => void }) {
-  return (
-    <div className="flex rounded-full bg-paper-sunk p-0.5 text-xs font-semibold">
-      {(["percentage", "points"] as const).map((m) => (
-        <button
-          key={m}
-          onClick={() => onChange({ scoreMode: m })}
-          className={`rounded-full px-3 py-1 transition ${
-            course.scoreMode === m ? "bg-paper-card text-ink shadow-sm" : "text-ink-faint"
-          }`}
-        >
-          {m === "percentage" ? "% weighted" : "points"}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function StandingCard({ course, summary }: { course: Course; summary: ReturnType<typeof gradeSummary> }) {
+function StandingCard({ summary }: { summary: ReturnType<typeof gradeSummary> }) {
   return (
     <div className="card p-5">
       <div className="flex items-center gap-4">
         <GradeRing value={summary.current} track={summary.weightCompleted} />
         <div className="flex-1">
-          <p className="label">Standing so far</p>
+          <div className="flex items-center gap-1">
+            <p className="label">Standing so far</p>
+            <span
+              className="cursor-help text-ink-faint"
+              title="The faint ring shows how much of the grade is locked in. Projection assumes remaining work matches your current average."
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4M12 8h.01" />
+              </svg>
+            </span>
+          </div>
           <p className="font-display text-sm text-ink-soft">
             {summary.anyGraded
-              ? `${letterGrade(summary.current)} on ${pct(summary.weightCompleted, 0)} of the grade`
+              ? `${pct(summary.current, 0)} so far, with ${pct(summary.weightCompleted, 0)} of the grade in`
               : "No marks entered yet"}
           </p>
           <div className="mt-3 space-y-1.5 text-sm">
@@ -159,13 +294,6 @@ function StandingCard({ course, summary }: { course: Course; summary: ReturnType
           </div>
         </div>
       </div>
-      <p className="mt-3 border-t border-line/70 pt-2 text-[11px] leading-relaxed text-ink-faint">
-        The faint ring shows how much of the grade is locked in. Projection assumes remaining work
-        matches your current average.
-      </p>
-      {course.scoreMode === "points" && (
-        <p className="mt-1 text-[11px] text-ink-faint">Points mode: grade = earned ÷ total points.</p>
-      )}
     </div>
   );
 }
@@ -193,6 +321,7 @@ function TargetCard({ course, onChange }: { course: Course; onChange: (p: Partia
         <input
           type="number"
           value={target ?? ""}
+          onFocus={(e) => e.currentTarget.select()}
           onChange={(e) =>
             onChange({ targetGrade: e.target.value === "" ? undefined : Number(e.target.value) })
           }
@@ -239,188 +368,64 @@ function TargetCard({ course, onChange }: { course: Course; onChange: (p: Partia
   );
 }
 
-function ComponentCard({
-  component,
-  scoreMode,
+function Hurdles({
+  course,
+  editing,
   onChange,
-  onRemove,
 }: {
-  component: Component;
-  scoreMode: Course["scoreMode"];
-  onChange: (p: Partial<Component>) => void;
-  onRemove: () => void;
+  course: Course;
+  editing: boolean;
+  onChange: (p: Partial<Course>) => void;
 }) {
-  const setItem = (id: string, p: Partial<Item>) =>
-    onChange({ items: component.items.map((it) => (it.id === id ? { ...it, ...p } : it)) });
-  const removeItem = (id: string) =>
-    onChange({ items: component.items.filter((it) => it.id !== id) });
-  const addItem = () =>
-    onChange({
-      items: [
-        ...component.items,
-        {
-          id: uid(),
-          label: `Item ${component.items.length + 1}`,
-          max: component.items[0]?.max ?? (scoreMode === "points" ? 10 : 100),
-        },
-      ],
-    });
-
-  const dropKind = component.drop?.kind ?? "none";
-  const dropCount =
-    component.drop?.kind === "keepBest"
-      ? component.drop.keep
-      : component.drop?.kind === "dropLowest"
-        ? component.drop.dropLowest
-        : 0;
-
-  const setDrop = (kind: string, count: number) => {
-    let drop: DropRule | undefined;
-    if (kind === "keepBest") drop = { kind: "keepBest", keep: Math.max(1, count || 1) };
-    else if (kind === "dropLowest") drop = { kind: "dropLowest", dropLowest: Math.max(1, count || 1) };
-    onChange({ drop });
-  };
-
-  return (
-    <div className="card overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-line/70 bg-paper-sunk/40 px-4 py-2.5">
-        <input
-          value={component.name}
-          onChange={(e) => onChange({ name: e.target.value })}
-          className="flex-1 bg-transparent font-display text-base font-semibold outline-none"
-        />
-        {scoreMode === "percentage" && (
-          <label className="flex items-center gap-1 text-sm text-ink-soft">
-            <input
-              type="number"
-              value={component.weight || ""}
-              onChange={(e) => onChange({ weight: Number(e.target.value) || 0 })}
-              className="w-16 rounded border border-line bg-paper-card px-2 py-1 text-right tabular-nums outline-none focus:border-accent"
-            />
-            %
-          </label>
-        )}
-        <button onClick={onRemove} className="grid h-7 w-7 place-items-center rounded text-ink-faint hover:bg-bad/10 hover:text-bad" title="Remove component">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-
-      {component.needsReview && (
-        <div className="flex items-start gap-2 border-b border-warn/20 bg-warn/5 px-4 py-2 text-xs text-warn">
-          <svg className="mt-0.5 shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 9v4M12 17h.01M10.3 3.86l-8.5 14.7A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.44l-8.5-14.7a2 2 0 0 0-3.4 0z" />
-          </svg>
-          <span>{component.needsReview} — double-check this.</span>
-        </div>
-      )}
-
-      <div className="divide-y divide-line/60">
-        {component.items.map((it) => (
-          <div key={it.id} className="flex items-center gap-2 px-4 py-2">
-            <input
-              value={it.label}
-              onChange={(e) => setItem(it.id, { label: e.target.value })}
-              className="flex-1 bg-transparent text-sm outline-none"
-            />
-            <input
-              type="number"
-              value={it.score ?? ""}
-              onChange={(e) =>
-                setItem(it.id, { score: e.target.value === "" ? undefined : Number(e.target.value) })
-              }
-              placeholder="—"
-              className="w-16 rounded-md border border-line bg-paper-card px-2 py-1 text-right text-sm tabular-nums outline-none placeholder:text-ink-faint focus:border-accent focus:ring-2 focus:ring-accent/15"
-            />
-            <span className="text-ink-faint">/</span>
-            <input
-              type="number"
-              value={it.max}
-              onChange={(e) => setItem(it.id, { max: Number(e.target.value) || 0 })}
-              className="w-14 rounded-md border border-transparent bg-paper-sunk/60 px-2 py-1 text-right text-sm tabular-nums text-ink-soft outline-none focus:border-line focus:bg-paper-card"
-            />
-            <button onClick={() => removeItem(it.id)} className="grid h-6 w-6 place-items-center rounded text-ink-faint hover:text-bad" title="Remove item">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line/70 px-4 py-2.5 text-xs text-ink-soft">
-        <button onClick={addItem} className="inline-flex items-center gap-1 font-medium text-accent hover:underline">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Add item
-        </button>
-        <label className="flex items-center gap-1.5">
-          <span className="text-ink-faint">Rule</span>
-          <select
-            value={dropKind}
-            onChange={(e) => setDrop(e.target.value, dropCount || 1)}
-            className="rounded border border-line bg-paper-card px-1.5 py-1 outline-none focus:border-accent"
-          >
-            <option value="none">count all</option>
-            <option value="keepBest">best N of {component.items.length}</option>
-            <option value="dropLowest">drop lowest</option>
-          </select>
-        </label>
-        {dropKind !== "none" && (
-          <input
-            type="number"
-            value={dropCount}
-            onChange={(e) => setDrop(dropKind, Number(e.target.value))}
-            className="w-14 rounded border border-line bg-paper-card px-2 py-1 text-right tabular-nums outline-none focus:border-accent"
-          />
-        )}
-        <label className="flex items-center gap-1.5" title="Two components sharing a link form a 'whichever is better' pair">
-          <span className="text-ink-faint">Link</span>
-          <input
-            value={component.linkGroupId ?? ""}
-            onChange={(e) => onChange({ linkGroupId: e.target.value || undefined })}
-            placeholder="—"
-            className="w-20 rounded border border-line bg-paper-card px-2 py-1 outline-none placeholder:text-ink-faint focus:border-accent"
-          />
-        </label>
-      </div>
-    </div>
-  );
-}
-
-function Hurdles({ course, onChange }: { course: Course; onChange: (p: Partial<Course>) => void }) {
-  if (course.hurdles.length === 0) return null;
+  if (course.hurdles.length === 0 && !editing) return null;
   return (
     <div className="card mt-6 p-4">
       <p className="label mb-2">Pass requirements</p>
       <ul className="space-y-1.5">
         {course.hurdles.map((h) => (
           <li key={h.id} className="flex items-start gap-2 text-sm text-ink-soft">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: gradeColor(40) }} />
-            <input
-              value={h.description}
-              onChange={(e) =>
-                onChange({
-                  hurdles: course.hurdles.map((x) =>
-                    x.id === h.id ? { ...x, description: e.target.value } : x,
-                  ),
-                })
-              }
-              className="flex-1 bg-transparent outline-none"
-            />
-            <button
-              onClick={() => onChange({ hurdles: course.hurdles.filter((x) => x.id !== h.id) })}
-              className="text-ink-faint hover:text-bad"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />
+            {editing ? (
+              <>
+                <input
+                  value={h.description}
+                  onChange={(e) =>
+                    onChange({
+                      hurdles: course.hurdles.map((x) =>
+                        x.id === h.id ? { ...x, description: e.target.value } : x,
+                      ),
+                    })
+                  }
+                  className="flex-1 bg-transparent outline-none"
+                />
+                <button
+                  onClick={() => onChange({ hurdles: course.hurdles.filter((x) => x.id !== h.id) })}
+                  className="text-ink-faint hover:text-bad"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <span className="flex-1">{h.description}</span>
+            )}
           </li>
         ))}
       </ul>
+      {editing && (
+        <button
+          onClick={() =>
+            onChange({ hurdles: [...course.hurdles, { id: uid(), description: "" }] })
+          }
+          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Add requirement
+        </button>
+      )}
     </div>
   );
 }

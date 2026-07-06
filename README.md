@@ -19,13 +19,16 @@ cp .env.example .env.local        # then put your key in .env.local
 ## Run locally
 
 ```bash
-npx vercel dev     # runs the app AND the /api/extract function (needs the key)
+npm run dev        # runs the app AND the /api/extract function (needs the key)
 npm test           # grade-engine unit tests (Vitest)
 npm run build      # production build to dist/
 ```
 
-> `npm run dev` (plain Vite) serves the UI but **not** the `/api/extract`
-> function, so uploads won't work there — use `vercel dev` for the full app.
+> A Vite dev-server middleware (`vite.config.ts`) adapts the `/api/extract`
+> serverless handler so plain `npm run dev` serves uploads too — no need for
+> `vercel dev` during local development. `vercel dev` is still useful if you
+> want to exercise the exact Vercel production runtime before deploying (see
+> below).
 
 ## Deploy to Vercel
 

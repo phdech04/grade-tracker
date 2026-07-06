@@ -80,7 +80,7 @@ function TermSummary({ courses }: { courses: Course[] }) {
     let withTarget = 0;
     for (const c of courses) {
       const s = gradeSummary(c);
-      const w = c.credits && c.credits > 0 ? c.credits : 1;
+      const w = c.credits != null ? c.credits : 1;
       if (s.projected !== null && s.anyGraded) {
         projSum += s.projected * w;
         projW += w;
@@ -97,7 +97,7 @@ function TermSummary({ courses }: { courses: Course[] }) {
       graded: gradedW > 0 ? gradedSum / gradedW : 0,
       onTarget,
       withTarget,
-      anyCredits: courses.some((c) => c.credits && c.credits > 0),
+      anyCredits: courses.some((c) => c.credits != null),
     };
   }, [courses]);
 

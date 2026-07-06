@@ -1,15 +1,25 @@
 import type { AppData, Course } from "../types";
+import { migrateV1, type AppDataV1 } from "./migrate";
 
+// The key predates the v2 schema; the `version` field inside distinguishes.
 const DATA_KEY = "grade-tracker:data:v1";
 
-const empty: AppData = { version: 1, courses: [] };
+const empty: AppData = { version: 2, courses: [] };
+
+function coerce(parsed: unknown): AppData | null {
+  const p = parsed as { version?: number; courses?: unknown };
+  if (!p || !Array.isArray(p.courses)) return null;
+  if (p.version === 2) return p as AppData;
+  if (p.version === 1) return migrateV1(p as AppDataV1);
+  return null;
+}
 
 export function loadData(): AppData {
   try {
     const raw = localStorage.getItem(DATA_KEY);
     if (!raw) return { ...empty };
-    const parsed = JSON.parse(raw) as AppData;
-    if (parsed && parsed.version === 1 && Array.isArray(parsed.courses)) return parsed;
+    const data = coerce(JSON.parse(raw));
+    if (data) return data;
   } catch {
     // fall through to empty
   }
@@ -47,11 +57,9 @@ export function exportData(data: AppData): void {
 
 export async function importData(file: File): Promise<AppData> {
   const text = await file.text();
-  const parsed = JSON.parse(text) as AppData;
-  if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.courses)) {
-    throw new Error("Not a valid Grade Tracker backup file.");
-  }
-  return parsed;
+  const data = coerce(JSON.parse(text));
+  if (!data) throw new Error("Not a valid Grade Tracker backup file.");
+  return data;
 }
 
 export function uid(): string {

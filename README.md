@@ -1,8 +1,9 @@
 # Tally — grade tracker
 
-Upload a course outline (PDF or HTML), Tally extracts the grading scheme with
-Google Gemini (read server-side, so no key in the browser), and you track marks +
-projections as the term goes. Courses and marks live in your browser
+Upload a course outline (PDF or HTML), Tally extracts the grading scheme **and
+the assessment schedule** with Google Gemini (read server-side, so no key in the
+browser). You then track marks + projections and keep an eye on upcoming
+deadlines as the term goes. Courses, marks, and deadlines live in your browser
 (`localStorage`); back them up with the JSON export in Settings.
 
 ## Setup
@@ -47,12 +48,16 @@ further, restrict the key by HTTP referrer in Google AI Studio / Cloud Console.
 ## How it works
 
 - `api/extract.ts` — Vercel serverless function. Holds `GEMINI_API_KEY`, calls
-  Gemini (`gemini-2.5-flash`) with a structured-output schema, returns the scheme.
+  Gemini (`gemini-2.5-flash`) with a structured-output schema, returns the
+  grading scheme plus the dated assessment schedule.
 - `src/lib/extract.ts` — POSTs the file to `/api/extract` and maps the result into
-  a course template (PDF sent as base64; HTML stripped to text first).
+  a course template with components and deadlines (PDF sent as base64; HTML
+  stripped to text first).
 - `src/lib/grades.ts` — the calculation engine. Items are scored as percentages;
   component weights are unit-agnostic (percent or points — only the ratios
   between them matter), with best-N-of-M / drop-lowest rules and "whichever is
   better" linked components. Covered by `src/lib/grades.test.ts`.
-- `src/lib/storage.ts` — `localStorage` persistence + JSON export/import.
-- `src/components/` — dashboard, course detail, import/review, settings.
+- `src/lib/dates.ts` — due-date formatting/relative-day helpers for deadlines.
+- `src/lib/storage.ts` — `localStorage` persistence + JSON export/import, with a
+  versioned migration chain (`src/lib/migrate.ts`, currently v3).
+- `src/components/` — dashboard, course detail, deadline list, import/review, settings.

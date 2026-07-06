@@ -1,6 +1,10 @@
 import { useState } from "react";
 import type { Course } from "../types";
-import { extractCourse } from "../lib/extract";
+import {
+  applyConfirmations,
+  extractCourse,
+  type ExtractionResult,
+} from "../lib/extract";
 import { totalWeight } from "../lib/grades";
 
 interface Props {
@@ -11,7 +15,7 @@ interface Props {
 type Stage =
   | { kind: "drop" }
   | { kind: "loading"; name: string }
-  | { kind: "review"; course: Course }
+  | { kind: "review"; result: ExtractionResult }
   | { kind: "error"; message: string };
 
 export function ImportReview({ onCancel, onSave }: Props) {
@@ -21,8 +25,8 @@ export function ImportReview({ onCancel, onSave }: Props) {
   async function handleFile(file: File) {
     setStage({ kind: "loading", name: file.name });
     try {
-      const course = await extractCourse(file);
-      setStage({ kind: "review", course });
+      const result = await extractCourse(file);
+      setStage({ kind: "review", result });
     } catch (e) {
       setStage({ kind: "error", message: e instanceof Error ? e.message : "Extraction failed." });
     }
@@ -108,9 +112,14 @@ export function ImportReview({ onCancel, onSave }: Props) {
 
           {stage.kind === "review" && (
             <ReviewBody
-              course={stage.course}
-              onChangeName={(name) => setStage({ kind: "review", course: { ...stage.course, name } })}
-              onSave={() => onSave(stage.course)}
+              result={stage.result}
+              onChangeName={(name) =>
+                setStage({
+                  kind: "review",
+                  result: { ...stage.result, course: { ...stage.result.course, name } },
+                })
+              }
+              onSave={(course) => onSave(course)}
               onRedo={() => setStage({ kind: "drop" })}
             />
           )}
@@ -121,18 +130,28 @@ export function ImportReview({ onCancel, onSave }: Props) {
 }
 
 function ReviewBody({
-  course,
+  result,
   onChangeName,
   onSave,
   onRedo,
 }: {
-  course: Course;
+  result: ExtractionResult;
   onChangeName: (name: string) => void;
-  onSave: () => void;
+  onSave: (course: Course) => void;
   onRedo: () => void;
 }) {
+  const { course, confirmations } = result;
+  const [answers, setAnswers] = useState<Record<string, number>>(() =>
+    Object.fromEntries(
+      confirmations.filter((c) => c.field !== "note").map((c) => [c.id, c.suggestion]),
+    ),
+  );
+  const [acked, setAcked] = useState<Record<string, boolean>>({});
+
+  const notes = confirmations.filter((c) => c.field === "note");
+  const numeric = confirmations.filter((c) => c.field !== "note");
+  const allAcked = notes.every((c) => acked[c.id]);
   const tw = totalWeight(course);
-  const reviewFlags = course.components.filter((c) => c.needsReview).length;
 
   return (
     <div>
@@ -155,20 +174,17 @@ function ReviewBody({
               <th className="px-3 py-2 font-semibold">Component</th>
               <th className="px-3 py-2 text-center font-semibold">Items</th>
               <th className="px-3 py-2 text-center font-semibold">Rule</th>
-              <th className="px-3 py-2 text-right font-semibold">
-                {course.scoreMode === "points" ? "Points" : "Weight"}
-              </th>
+              <th className="px-3 py-2 text-right font-semibold">Weight</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line/60">
             {course.components.map((c) => (
-              <tr key={c.id} className={c.needsReview ? "bg-warn/5" : ""}>
+              <tr key={c.id}>
                 <td className="px-3 py-2">
                   <div className="font-medium">{c.name}</div>
                   {c.linkGroupId && (
-                    <div className="text-[11px] text-accent">whichever is better · {c.linkGroupId}</div>
+                    <div className="text-[11px] text-accent">whichever is better</div>
                   )}
-                  {c.needsReview && <div className="text-[11px] text-warn">⚠ {c.needsReview}</div>}
                 </td>
                 <td className="px-3 py-2 text-center tabular-nums text-ink-soft">{c.items.length}</td>
                 <td className="px-3 py-2 text-center text-xs text-ink-soft">
@@ -179,9 +195,7 @@ function ReviewBody({
                       : "—"}
                 </td>
                 <td className="px-3 py-2 text-right font-display font-semibold tabular-nums">
-                  {course.scoreMode === "points"
-                    ? `${c.items.reduce((s, i) => s + i.max, 0)}`
-                    : `${c.weight}%`}
+                  {c.weight}
                 </td>
               </tr>
             ))}
@@ -189,14 +203,66 @@ function ReviewBody({
         </table>
       </div>
 
-      <div className="mt-2 flex items-center justify-between text-xs text-ink-faint">
-        <span>
-          {course.scoreMode === "percentage"
-            ? `Total ${tw % 1 ? tw.toFixed(1) : tw}%`
-            : "Points-based scoring"}
-        </span>
-        {reviewFlags > 0 && <span className="text-warn">{reviewFlags} item(s) flagged for review</span>}
-      </div>
+      <p className="mt-2 text-xs text-ink-faint">
+        Weights total {tw % 1 ? tw.toFixed(1) : tw}
+        {Math.abs(tw - 100) < 0.5 ? "%" : " — treated as shares of the total"}
+      </p>
+
+      {confirmations.length > 0 && (
+        <div className="mt-4 rounded-xl border border-accent/30 bg-accent-wash/50 p-4">
+          <p className="label text-accent">Confirm these</p>
+          <div className="mt-2 space-y-3">
+            {numeric.map((conf) => (
+              <div key={conf.id}>
+                <p className="text-sm text-ink-soft">
+                  {conf.componentIndex !== null && (
+                    <span className="font-semibold">
+                      {course.components[conf.componentIndex]?.name}:{" "}
+                    </span>
+                  )}
+                  {conf.question}
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {conf.choices.map((choice) => (
+                    <button
+                      key={choice}
+                      onClick={() => setAnswers((a) => ({ ...a, [conf.id]: choice }))}
+                      className={`rounded-full border px-2.5 py-0.5 text-sm tabular-nums transition ${
+                        answers[conf.id] === choice
+                          ? "border-accent bg-accent text-white"
+                          : "border-line bg-paper-card text-ink-soft hover:border-accent/50"
+                      }`}
+                    >
+                      {choice}
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min={0}
+                    value={answers[conf.id] ?? ""}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onChange={(e) =>
+                      setAnswers((a) => ({ ...a, [conf.id]: Number(e.target.value) }))
+                    }
+                    className="w-20 rounded-md border border-line bg-paper-card px-2 py-1 text-right text-sm tabular-nums outline-none focus:border-accent"
+                  />
+                </div>
+              </div>
+            ))}
+            {notes.map((conf) => (
+              <label key={conf.id} className="flex items-start gap-2 text-sm text-ink-soft">
+                <input
+                  type="checkbox"
+                  checked={acked[conf.id] ?? false}
+                  onChange={(e) => setAcked((a) => ({ ...a, [conf.id]: e.target.checked }))}
+                  className="mt-0.5 accent-accent"
+                />
+                <span>{conf.question}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       {course.hurdles.length > 0 && (
         <div className="mt-3 rounded-lg bg-paper-sunk/50 px-3 py-2 text-xs text-ink-soft">
@@ -213,7 +279,12 @@ function ReviewBody({
         <button onClick={onRedo} className="btn-ghost">
           Re-upload
         </button>
-        <button onClick={onSave} className="btn-accent">
+        <button
+          onClick={() => onSave(applyConfirmations(course, confirmations, answers))}
+          disabled={!allAcked}
+          className="btn-accent disabled:cursor-not-allowed disabled:opacity-50"
+          title={allAcked ? undefined : "Tick the checkboxes above first"}
+        >
           Save &amp; open
         </button>
       </div>

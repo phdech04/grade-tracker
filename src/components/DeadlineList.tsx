@@ -14,8 +14,6 @@ interface Props {
 }
 
 export function DeadlineList({ events, components, editing, today, onChange }: Props) {
-  if (events.length === 0 && !editing) return null;
-
   const update = (id: string, p: Partial<CourseEvent>) =>
     onChange(events.map((e) => (e.id === id ? { ...e, ...p } : e)));
   const remove = (id: string) => onChange(events.filter((e) => e.id !== id));
@@ -32,7 +30,11 @@ export function DeadlineList({ events, components, editing, today, onChange }: P
       <p className="label mb-2">Deadlines</p>
 
       {events.length === 0 ? (
-        <p className="text-sm text-ink-faint">No deadlines yet — add one below.</p>
+        <p className="text-sm text-ink-faint">
+          {editing
+            ? "No deadlines yet — add one below."
+            : "No deadlines yet. Re-import this course's outline to pull its schedule automatically, or tap Edit to add them by hand."}
+        </p>
       ) : (
         <ul className="divide-y divide-line/60">
           {sorted.map((e) =>

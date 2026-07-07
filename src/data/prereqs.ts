@@ -38,9 +38,9 @@ export const PREREQS: Record<string, PrereqData> = {
   "CS 234": { prereq: oneOf("CS 116", "CS 136", "CS 138", "CS 146") },
   "CS 335": {
     prereq: { all: [oneOf("CS 116", "CS 136", "CS 138", "CS 146"), oneOf("MATH 136", "MATH 146"), oneOf("MATH 237", "MATH 247"), oneOf("STAT 231", "STAT 241")] },
-    antireq: ["CS 371", "CS 370"],
+    antireq: ["CS 371", "CS 370", "AMATH 242"],
   },
-  "CS 475": { prereq: oneOf("CS 371", "CS 370") },
+  "CS 475": { prereq: oneOf("CS 371", "CS 370", "AMATH 242") },
 
   // --- AMATH ---
   "AMATH 231": { prereq: oneOf("MATH 237", "MATH 247"), termsOffered: ["F", "W", "S"] },

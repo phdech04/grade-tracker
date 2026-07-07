@@ -16,7 +16,8 @@ const catalog = buildCatalog(CATALOG);
 
 export function PlanScreen({ transcript, plan, onChangePlan }: Props) {
   const taken = useMemo(() => takenFromTranscript(transcript), [transcript]);
-  const selected = MAJORS.filter((m) => plan.majorIds.includes(m.id));
+  // Memoize so the (now real) scheduler solve doesn't rerun on unrelated renders.
+  const selected = useMemo(() => MAJORS.filter((m) => plan.majorIds.includes(m.id)), [plan.majorIds]);
   const progresses = useMemo(
     () => selected.map((m) => ({ major: m, progress: evaluate(m, taken, catalog) })),
     [selected, taken],

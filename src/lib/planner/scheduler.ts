@@ -1,5 +1,5 @@
-import type { CatalogCourse, Major, PrereqExpr } from "./types";
-import { prereqCourses, satisfied } from "./prereq";
+import type { CatalogCourse, Major } from "./types";
+import { closure, prereqCourses, satisfied } from "./prereq";
 import { parseCode } from "./codes";
 import { evaluate } from "./requirements";
 
@@ -30,30 +30,21 @@ function seasonOf(level: string): "F" | "W" {
   return level.endsWith("B") ? B_TERM_SEASON : A_TERM_SEASON;
 }
 
-/** Minimal set of extra courses (beyond `have`) needed to satisfy an expression. */
-function chooseToSatisfy(expr: PrereqExpr | undefined, have: Set<string>): string[] {
-  if (!expr || satisfied(expr, have)) return [];
-  if ("course" in expr) return [expr.course];
-  if ("all" in expr) return expr.all.flatMap((e) => chooseToSatisfy(e, have));
-  const branches = "oneOf" in expr ? expr.oneOf : expr.nOf.of;
-  const n = "oneOf" in expr ? 1 : expr.nOf.n;
-  // Pick the n cheapest branches by how many new courses they add.
-  return branches
-    .map((b) => chooseToSatisfy(b, have))
-    .sort((a, b) => a.length - b.length)
-    .slice(0, n)
-    .flat();
-}
-
-/** Union of still-needed courses across the majors, plus their prereq closure. */
+/** Union of still-needed courses across the majors, plus their prereq closure.
+ * Majors are evaluated in sequence against `taken` PLUS what's been chosen so
+ * far, so the second major reuses the first's picks (double-counting) and won't
+ * recommend a course whose antirequisite is already planned. The prereq closure
+ * is catalog-aware, so only real, schedulable courses ever enter the plan. */
 export function neededCourses(majors: Major[], taken: Set<string>, catalog: Catalog): Set<string> {
+  const catalogCodes = new Set(catalog.keys());
   const need = new Set<string>();
   for (const m of majors) {
-    for (const code of evaluate(m, taken, catalog).remainingCourses) {
+    const effective = new Set([...taken, ...need]);
+    for (const code of evaluate(m, effective, catalog).remainingCourses) {
       if (!taken.has(code)) need.add(code);
     }
   }
-  // Fixpoint: pull in prerequisites of needed courses that aren't already met.
+  // Fixpoint: pull in the (catalog-valid) prerequisites of needed courses.
   let changed = true;
   while (changed) {
     changed = false;
@@ -61,9 +52,11 @@ export function neededCourses(majors: Major[], taken: Set<string>, catalog: Cata
       const course = catalog.get(code);
       if (!course?.prereq) continue;
       const have = new Set([...taken, ...need]);
-      for (const add of chooseToSatisfy(course.prereq, have)) {
-        if (!taken.has(add) && !need.has(add)) {
-          need.add(add);
+      const add = closure(course.prereq, have, catalogCodes);
+      if (!add) continue; // prereq unsatisfiable from the catalog — leave it to surface as unplaced
+      for (const a of add) {
+        if (!taken.has(a) && !need.has(a)) {
+          need.add(a);
           changed = true;
         }
       }

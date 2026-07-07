@@ -1,5 +1,6 @@
 import type { CatalogCourse, Major, ReqGroup } from "./types";
 import { isMathSubject, normalizeCode, parseCode } from "./codes";
+import { closure } from "./prereq";
 
 // Evaluate a major's requirement tree against the courses a student has taken.
 // Each major is scored independently over the full taken set, so a course can
@@ -58,6 +59,7 @@ function evalNode(
   taken: Set<string>,
   catalog: Catalog,
   named: Set<string>,
+  catalogCodes: Set<string>,
 ): { met: boolean; remaining: string[] } {
   switch (node.kind) {
     case "course": {
@@ -65,19 +67,21 @@ function evalNode(
       return { met, remaining: met ? [] : [normalizeCode(node.code)] };
     }
     case "all": {
-      const parts = node.of.map((n) => evalNode(n, taken, catalog, named));
+      const parts = node.of.map((n) => evalNode(n, taken, catalog, named, catalogCodes));
       return { met: parts.every((p) => p.met), remaining: parts.flatMap((p) => p.remaining) };
     }
     case "chooseN": {
-      const parts = node.of.map((n) => ({ node: n, ...evalNode(n, taken, catalog, named) }));
+      const parts = node.of.map((n) => ({ node: n, ...evalNode(n, taken, catalog, named, catalogCodes) }));
       const metCount = parts.filter((p) => p.met).length;
       if (metCount >= node.n) return { met: true, remaining: [] };
       const unmet = parts
         .filter((p) => !p.met)
-        // Fewest courses left to finish; break ties toward the option the
-        // student has already partially completed (finish what you started,
-        // and avoid pulling in a wholly-new prereq chain).
+        // Prefer options that are actually schedulable (their prereqs can be met
+        // from the catalog); then fewest courses left; then the option already
+        // partially completed (finish what you started).
         .sort((a, b) => {
+          const feas = Number(feasible(b, taken, catalog, catalogCodes)) - Number(feasible(a, taken, catalog, catalogCodes));
+          if (feas !== 0) return feas;
           const byRemaining = a.remaining.length - b.remaining.length;
           if (byRemaining !== 0) return byRemaining;
           return heldLeaves(b.node, taken, catalog) - heldLeaves(a.node, taken, catalog);
@@ -89,13 +93,35 @@ function evalNode(
       const matches = patternMatches(node, taken, named).length;
       const short = Math.max(0, node.n - matches);
       if (short === 0) return { met: true, remaining: [] };
-      const pool = dedupeByCourse(
-        (node.pool ?? []).filter((c) => !held(c, taken, catalog) && !named.has(normalizeCode(c))),
+      // Recommend from an explicit pool, else synthesise concrete catalog
+      // courses matching the pattern so the requirement can actually be planned.
+      const candidates = node.pool ?? patternCandidates(node, catalog);
+      const rec = dedupeByCourse(
+        candidates.filter((cc) => !held(cc, taken, catalog) && !named.has(normalizeCode(cc))),
         catalog,
       ).slice(0, short);
-      return { met: false, remaining: pool };
+      return { met: false, remaining: rec };
     }
   }
+}
+
+/** Are all of an option's outstanding courses schedulable (prereqs catalog-satisfiable)? */
+function feasible(
+  part: { remaining: string[] },
+  taken: Set<string>,
+  catalog: Catalog,
+  catalogCodes: Set<string>,
+): boolean {
+  return part.remaining.every(
+    (code) => catalogCodes.has(normalizeCode(code)) && closure(catalog.get(code)?.prereq, taken, catalogCodes) !== null,
+  );
+}
+
+/** Catalog courses matching a no-pool pattern (subject/level), as concrete recommendations. */
+function patternCandidates(node: Extract<ReqGroup, { kind: "pattern" }>, catalog: Catalog): string[] {
+  const uniq = new Set<string>();
+  for (const course of catalog.values()) uniq.add(normalizeCode(course.code));
+  return [...uniq].filter((code) => matchesPattern(code, node)).sort();
 }
 
 /** Taken courses that count toward a pattern: match subject/level (or pool) and
@@ -156,16 +182,17 @@ function dedupeByCourse(codes: string[], catalog: Catalog): string[] {
 export function evaluate(major: Major, taken: Set<string>, catalog: Catalog): MajorProgress {
   const norm = new Set([...taken].map(normalizeCode));
   const named = namedCourses(major.requirement);
+  const catalogCodes = new Set(catalog.keys());
 
   // Top-level groups for display (unwrap the outer "all").
   const topNodes = major.requirement.kind === "all" ? major.requirement.of : [major.requirement];
   const groups: GroupProgress[] = topNodes.map((n) => {
-    const r = evalNode(n, norm, catalog, named);
+    const r = evalNode(n, norm, catalog, named, catalogCodes);
     const need = countLeaves(n);
     return {
       label: nodeLabel(n),
       need,
-      have: need - outstandingLeaves(n, norm, catalog, named),
+      have: need - outstandingLeaves(n, norm, catalog, named, catalogCodes),
       satisfied: r.met,
       remaining: r.remaining,
     };
@@ -217,15 +244,21 @@ function countLeaves(n: ReqGroup): number {
   return n.of.reduce((s, c) => s + countLeaves(c), 0);
 }
 
-function outstandingLeaves(n: ReqGroup, taken: Set<string>, catalog: Catalog, named: Set<string>): number {
+function outstandingLeaves(
+  n: ReqGroup,
+  taken: Set<string>,
+  catalog: Catalog,
+  named: Set<string>,
+  catalogCodes: Set<string>,
+): number {
   if (n.kind === "course") return held(n.code, taken, catalog) ? 0 : 1;
   if (n.kind === "pattern") {
     return Math.max(0, n.n - patternMatches(n, taken, named).length);
   }
   if (n.kind === "all") {
-    return n.of.reduce((s, c) => s + outstandingLeaves(c, taken, catalog, named), 0);
+    return n.of.reduce((s, c) => s + outstandingLeaves(c, taken, catalog, named, catalogCodes), 0);
   }
   // chooseN: outstanding = n - (met options), floored at 0.
-  const met = n.of.filter((c) => evalNode(c, taken, catalog, named).met).length;
+  const met = n.of.filter((c) => evalNode(c, taken, catalog, named, catalogCodes).met).length;
   return Math.max(0, n.n - met);
 }

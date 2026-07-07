@@ -60,3 +60,34 @@ describe("scheduler over the real catalog", () => {
     }
   });
 });
+
+describe("scheduler from an empty transcript (new user)", () => {
+  const need = neededCourses(majors, new Set(), catalog);
+
+  it("never pulls in a non-catalog / phantom course", () => {
+    for (const code of need) expect(catalog.has(code)).toBe(true);
+  });
+
+  it("does not require a course and its antirequisite together (double-major consistency)", () => {
+    // MATH 237 and MATH 247 are each other's antireqs; only one should be needed.
+    expect(need.has("MATH 237") && need.has("MATH 247")).toBe(false);
+  });
+
+  it("includes the real first-year roots, not the un-catalogued advanced stream", () => {
+    expect(need.has("MATH 135")).toBe(true);
+    expect(need.has("CS 135")).toBe(true);
+    expect(need.has("MATH 146")).toBe(false);
+    expect(need.has("MATH 148")).toBe(false);
+  });
+
+  it("still yields a prerequisite-valid ordering over 8 fresh terms", () => {
+    const res = schedule({ majors, taken: new Set(), catalog, levels: ["1A", "1B", "2A", "2B", "3A", "3B", "4A", "4B"] });
+    const have = new Set<string>();
+    for (const term of res.terms) {
+      for (const code of term.courses) {
+        expect(satisfied(catalog.get(code)?.prereq, have)).toBe(true);
+      }
+      for (const code of term.courses) have.add(code);
+    }
+  });
+});

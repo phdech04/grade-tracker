@@ -3,7 +3,7 @@ import type { PlanConfig, TranscriptEntry } from "../types";
 import { MAJORS } from "../data/majors";
 import { CATALOG } from "../data/catalog";
 import { buildCatalog, evaluate, type MajorProgress } from "../lib/planner/requirements";
-import { LEVELS, pastStudyTerms, takenFromTranscript } from "../lib/planner/backfill";
+import { inProgressCourses, LEVELS, pastStudyTerms, takenFromTranscript } from "../lib/planner/backfill";
 import { schedule } from "../lib/planner/scheduler";
 
 interface Props {
@@ -102,11 +102,21 @@ function TermMap({
 }) {
   const { columns, unplaced } = useMemo(() => {
     const past = pastStudyTerms(transcript);
-    const remainingLevels = LEVELS.slice(past.length);
-    const sched = schedule({ majors, taken, catalog, levels: remainingLevels });
+    const current = inProgressCourses(transcript);
+    const hasCurrent = current.length > 0;
+    const currentLevel = LEVELS[past.length];
+
+    // Courses you're taking now count as done for scheduling the terms ahead
+    // (they satisfy prerequisites and shouldn't be re-planned), but they aren't
+    // "passed" so they don't feed the progress cards.
+    const planBase = new Set([...taken, ...current]);
+    const usedLevels = past.length + (hasCurrent ? 1 : 0);
+    const sched = schedule({ majors, taken: planBase, catalog, levels: LEVELS.slice(usedLevels) });
+
     const cols = [
-      ...past.map((p) => ({ level: p.level, courses: p.courses, future: false })),
-      ...sched.terms.map((t) => ({ level: t.level, courses: t.courses, future: true })),
+      ...past.map((p) => ({ level: p.level, courses: p.courses, kind: "past" as const })),
+      ...(hasCurrent ? [{ level: currentLevel ?? "Now", courses: current, kind: "current" as const }] : []),
+      ...sched.terms.map((t) => ({ level: t.level, courses: t.courses, kind: "future" as const })),
     ];
     return { columns: cols, unplaced: sched.unplaced };
   }, [transcript, taken, majors]);
@@ -120,37 +130,40 @@ function TermMap({
       </p>
 
       <div className="mt-3 flex gap-3 overflow-x-auto pb-2">
-        {columns.map((c) => (
-          <div key={c.level} className="w-40 shrink-0">
-            <div
-              className={`rounded-t-lg px-3 py-1.5 text-center text-xs font-semibold ${
-                c.future ? "bg-accent-wash text-accent" : "bg-paper-sunk text-ink-soft"
-              }`}
-            >
-              {c.level}
-              {c.future && " · planned"}
+        {columns.map((c) => {
+          const header =
+            c.kind === "current"
+              ? "bg-good/10 text-good"
+              : c.kind === "future"
+                ? "bg-accent-wash text-accent"
+                : "bg-paper-sunk text-ink-soft";
+          const suffix = c.kind === "current" ? " · now" : c.kind === "future" ? " · planned" : "";
+          const chip =
+            c.kind === "current"
+              ? "border border-good/30 bg-good/5 text-ink"
+              : c.kind === "future"
+                ? "border border-accent/30 bg-accent-wash/40 text-ink"
+                : "bg-paper-sunk text-ink-soft";
+          return (
+            <div key={c.level} className="w-40 shrink-0">
+              <div className={`rounded-t-lg px-3 py-1.5 text-center text-xs font-semibold ${header}`}>
+                {c.level}
+                {suffix}
+              </div>
+              <div className="min-h-24 space-y-1.5 rounded-b-lg border border-line bg-paper-card p-2">
+                {c.courses.length === 0 ? (
+                  <p className="py-2 text-center text-[11px] text-ink-faint">—</p>
+                ) : (
+                  c.courses.map((code) => (
+                    <div key={code} className={`truncate rounded px-2 py-1 text-xs ${chip}`} title={code}>
+                      {code}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-            <div className="min-h-24 space-y-1.5 rounded-b-lg border border-line bg-paper-card p-2">
-              {c.courses.length === 0 ? (
-                <p className="py-2 text-center text-[11px] text-ink-faint">—</p>
-              ) : (
-                c.courses.map((code) => (
-                  <div
-                    key={code}
-                    className={`truncate rounded px-2 py-1 text-xs ${
-                      c.future
-                        ? "border border-accent/30 bg-accent-wash/40 text-ink"
-                        : "bg-paper-sunk text-ink-soft"
-                    }`}
-                    title={code}
-                  >
-                    {code}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {unplaced.length > 0 && (

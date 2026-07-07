@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { TranscriptEntry } from "../../types";
-import { completedStudyTerms, remainingStudyTerms, takenFromTranscript } from "./backfill";
+import {
+  completedStudyTerms,
+  inProgressCourses,
+  remainingStudyTerms,
+  takenFromTranscript,
+} from "./backfill";
 
 let seq = 0;
 const e = (p: Partial<TranscriptEntry>): TranscriptEntry => ({
@@ -28,6 +33,29 @@ describe("takenFromTranscript", () => {
     expect(taken.has("MATH 999")).toBe(false);
     expect(taken.has("PHYS 111")).toBe(false);
     expect(taken.size).toBe(2);
+  });
+
+  it("excludes PD and co-op milestone courses", () => {
+    const taken = takenFromTranscript([
+      e({ code: "PD 1", status: "credit" }),
+      e({ code: "COOP 1", status: "credit" }),
+      e({ code: "MATH 135", status: "graded", grade: 84 }),
+    ]);
+    expect(taken.has("MATH 135")).toBe(true);
+    expect(taken.has("PD 1")).toBe(false);
+    expect(taken.has("COOP 1")).toBe(false);
+  });
+});
+
+describe("inProgressCourses", () => {
+  it("returns academic in-progress courses only (this term), excluding PD/co-op", () => {
+    const current = inProgressCourses([
+      e({ code: "ACTSC 372", status: "in-progress" }),
+      e({ code: "AMATH 250", status: "in-progress" }),
+      e({ code: "PD 14", status: "in-progress" }),
+      e({ code: "MATH 135", status: "graded", grade: 84 }), // not in progress
+    ]);
+    expect(current.sort()).toEqual(["ACTSC 372", "AMATH 250"]);
   });
 });
 

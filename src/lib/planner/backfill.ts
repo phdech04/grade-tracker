@@ -1,6 +1,6 @@
 import type { TranscriptEntry } from "../../types";
 import { compareTerms } from "../transcript";
-import { normalizeCode } from "./codes";
+import { normalizeCode, parseCode } from "./codes";
 
 // Derive the planner's "where you are now" inputs from the transcript.
 
@@ -10,15 +10,34 @@ export const LEVELS = ["1A", "1B", "2A", "2B", "3A", "3B", "4A", "4B"] as const;
 /** Waterloo's passing grade. */
 const PASS = 50;
 
-/** Course codes the student has passed — a CR credit, or a graded ≥ 50%. */
+// Co-op / professional-development milestones — not academic courses the
+// planner should count, schedule, or show among degree courses.
+const NON_ACADEMIC = new Set(["PD", "COOP", "WKRPT"]);
+
+/** Is this an academic course (not a PD / co-op milestone)? */
+export function isAcademic(code: string): boolean {
+  const p = parseCode(code);
+  return p == null || !NON_ACADEMIC.has(p.subject);
+}
+
+/** Academic course codes the student has passed — a CR credit, or a graded ≥ 50%. */
 export function takenFromTranscript(transcript: TranscriptEntry[]): Set<string> {
   const set = new Set<string>();
   for (const e of transcript) {
-    if (!e.code) continue;
+    if (!e.code || !isAcademic(e.code)) continue;
     const passed = e.status === "credit" || (e.status === "graded" && (e.grade ?? 0) >= PASS);
     if (passed) set.add(normalizeCode(e.code));
   }
   return set;
+}
+
+/** Academic courses currently in progress (this term), normalized. */
+export function inProgressCourses(transcript: TranscriptEntry[]): string[] {
+  const out = new Set<string>();
+  for (const e of transcript) {
+    if (e.status === "in-progress" && e.code && isAcademic(e.code)) out.add(normalizeCode(e.code));
+  }
+  return [...out];
 }
 
 /**
@@ -52,7 +71,7 @@ export function pastStudyTerms(transcript: TranscriptEntry[]): PastTerm[] {
   const byTerm = new Map<string, { hasGraded: boolean; codes: string[] }>();
   const order: string[] = [];
   for (const e of transcript) {
-    if (!e.code) continue;
+    if (!e.code || !isAcademic(e.code)) continue;
     const passed = e.status === "credit" || (e.status === "graded" && (e.grade ?? 0) >= 50);
     if (!passed) continue;
     let g = byTerm.get(e.term);

@@ -10,7 +10,7 @@ const SYSTEM = `You extract COMPLETED courses from a university academic transcr
 For every course on the transcript, output one entry with:
 - code: the course code as written, e.g. "AMATH 250". Empty if none.
 - name: the course title. Empty only if truly absent.
-- term: the term/level as written, e.g. "Fall 2025", "Winter 2026", or a level like "2A". Empty if none.
+- term: the academic term as "Season YYYY" (e.g. "Fall 2024", "Winter 2026") from the term heading. Do NOT append the level code (like "1A"/"2B") to it. Empty if no term is shown.
 - credits: the credit/unit weight from the "Attempted" column as a number (e.g. 0.5, 1). 0 if not shown.
 - grade: the raw value in the Grade column, as TEXT — do not convert or invent. A number like "87" for a graded course; "CR" for credit; "NCR" for no-credit; "WD" (also "WF" or "W") for withdrawn; and "" (empty string) when the course has no grade yet because it is currently in progress (common in the most recent term).
 

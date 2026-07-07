@@ -7,11 +7,13 @@ import { ImportReview } from "./components/ImportReview";
 import { Settings } from "./components/Settings";
 import { TranscriptScreen } from "./components/TranscriptScreen";
 import { TranscriptImport } from "./components/TranscriptImport";
+import { PlanScreen } from "./components/PlanScreen";
 
 type View =
   | { kind: "dashboard" }
   | { kind: "course"; id: string }
   | { kind: "transcript" }
+  | { kind: "plan" }
   | { kind: "settings" };
 
 function blankCourse(): Course {
@@ -52,6 +54,7 @@ export default function App() {
     <div className="min-h-screen">
       <Header
         onHome={() => setView({ kind: "dashboard" })}
+        onPlan={() => setView({ kind: "plan" })}
         onTranscript={() => setView({ kind: "transcript" })}
         onSettings={() => setView({ kind: "settings" })}
         active={view.kind}
@@ -90,6 +93,14 @@ export default function App() {
             courses={data.courses}
             onChange={(transcript) => setData((d) => ({ ...d, transcript }))}
             onImport={() => setImportingTranscript(true)}
+          />
+        )}
+
+        {view.kind === "plan" && (
+          <PlanScreen
+            transcript={data.transcript}
+            plan={data.plan}
+            onChangePlan={(plan) => setData((d) => ({ ...d, plan }))}
           />
         )}
 
@@ -134,11 +145,13 @@ export default function App() {
 
 function Header({
   onHome,
+  onPlan,
   onTranscript,
   onSettings,
   active,
 }: {
   onHome: () => void;
+  onPlan: () => void;
   onTranscript: () => void;
   onSettings: () => void;
   active: string;
@@ -159,6 +172,15 @@ function Header({
           </span>
         </button>
         <div className="flex items-center gap-2">
+          <button
+            onClick={onPlan}
+            className={`btn-ghost ${active === "plan" ? "bg-paper-sunk" : ""}`}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 3v18M3 9h18M3 15h18M15 3v18" />
+            </svg>
+            <span className="hidden sm:inline">Plan</span>
+          </button>
           <button
             onClick={onTranscript}
             className={`btn-ghost ${active === "transcript" ? "bg-paper-sunk" : ""}`}

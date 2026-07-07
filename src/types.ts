@@ -86,8 +86,17 @@ export interface Course {
 }
 
 /**
- * A completed course on the student's transcript. Independent of the in-progress
- * `Course` tracker — just a final record used for performance analytics.
+ * Outcome of a transcript course:
+ * - graded: a numeric percentage (the only status counted in averages)
+ * - credit / no-credit: CR / NCR — passed or failed a non-graded course
+ * - in-progress: currently being taken, no grade yet
+ * - withdrawn: WD — dropped, doesn't count
+ */
+export type TranscriptStatus = "graded" | "credit" | "no-credit" | "in-progress" | "withdrawn";
+
+/**
+ * A course on the student's transcript. Independent of the in-progress `Course`
+ * tracker — a record used for performance analytics.
  */
 export interface TranscriptEntry {
   id: string;
@@ -97,15 +106,16 @@ export interface TranscriptEntry {
   term: string;
   /** Credit weight in averages; unset counts as 1. */
   credits?: number;
-  /** Final percentage. undefined = ungraded / CR-NCR (excluded from averages). */
+  /** Final percentage. Only meaningful (and only set) when status is "graded". */
   grade?: number;
+  status: TranscriptStatus;
   source: "import" | "manual" | "course";
   /** Set when pulled from an in-progress Course, to dedupe and allow refresh. */
   courseId?: string;
 }
 
 export interface AppData {
-  version: 4;
+  version: 5;
   courses: Course[];
   transcript: TranscriptEntry[];
 }

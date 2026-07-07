@@ -4,9 +4,11 @@ import {
   migrateV1,
   migrateV2,
   migrateV3,
+  migrateV4,
   type AppDataV1,
   type AppDataV2,
   type AppDataV3,
+  type AppDataV4,
   type CourseV1,
   type CourseV2,
 } from "./migrate";
@@ -198,5 +200,30 @@ describe("migrateV3", () => {
     expect(out.courses).toHaveLength(1);
     expect(out.courses[0].events).toHaveLength(1);
     expect(gradeSummary(out.courses[0]).current).toBe(before);
+  });
+});
+
+describe("migrateV4", () => {
+  const v4: AppDataV4 = {
+    version: 4,
+    courses: [],
+    transcript: [
+      { id: "a", name: "Graded", term: "Fall 2025", credits: 0.5, grade: 88, source: "import" },
+      { id: "b", name: "No grade", term: "Spring 2026", credits: 0.5, source: "import" },
+    ],
+  };
+
+  it("bumps to v5 and derives a status per entry", () => {
+    const out = migrateV4(v4);
+    expect(out.version).toBe(5);
+    expect(out.transcript[0].status).toBe("graded"); // had a number
+    expect(out.transcript[1].status).toBe("in-progress"); // had no grade
+  });
+
+  it("preserves the other entry fields", () => {
+    const out = migrateV4(v4);
+    expect(out.transcript[0].grade).toBe(88);
+    expect(out.transcript[0].credits).toBe(0.5);
+    expect(out.transcript[1].name).toBe("No grade");
   });
 });

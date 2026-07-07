@@ -11,10 +11,12 @@ import {
 } from "./transcript";
 
 let seq = 0;
+// Default helper makes a graded course; pass `grade`/`status` to vary.
 const entry = (p: Partial<TranscriptEntry> = {}): TranscriptEntry => ({
   id: `e${seq++}`,
   name: "Course",
   term: "Fall 2025",
+  status: p.grade != null && p.status == null ? "graded" : (p.status ?? "graded"),
   source: "manual",
   ...p,
 });
@@ -127,14 +129,38 @@ describe("extremes", () => {
 });
 
 describe("totals", () => {
-  it("counts courses, summed credits, and graded count", () => {
+  it("counts graded courses, their summed credits, and in-progress/credit tallies", () => {
     const t = totals([
-      entry({ grade: 80, credits: 0.5 }),
-      entry({ grade: undefined, credits: 0.5 }),
-      entry({ grade: 90 }), // unset credit -> 1
+      entry({ grade: 80, credits: 0.5, status: "graded" }),
+      entry({ grade: 90, status: "graded" }), // unset credit -> 1
+      entry({ status: "in-progress", credits: 0.5 }),
+      entry({ status: "credit", credits: 0.25 }),
+      entry({ status: "withdrawn", credits: 0.5 }),
     ]);
-    expect(t.courses).toBe(3);
-    expect(t.credits).toBeCloseTo(2, 5);
-    expect(t.gradedCount).toBe(2);
+    expect(t.graded).toBe(2);
+    expect(t.credits).toBeCloseTo(1.5, 5); // 0.5 + 1 (graded only)
+    expect(t.inProgress).toBe(1);
+    expect(t.credit).toBe(1);
+  });
+});
+
+describe("status handling", () => {
+  it("excludes credit / in-progress / withdrawn from the average", () => {
+    const avg = cumulativeAverage([
+      entry({ grade: 80, status: "graded" }),
+      entry({ status: "credit", credits: 0.5 }),
+      entry({ status: "in-progress" }),
+      entry({ status: "withdrawn" }),
+    ]);
+    expect(avg).toBe(80);
+  });
+
+  it("still shows non-graded courses in their term group", () => {
+    const groups = byTerm([
+      entry({ term: "Spring 2026", status: "in-progress" }),
+      entry({ term: "Spring 2026", grade: 88, status: "graded" }),
+    ]);
+    expect(groups[0].count).toBe(2); // both listed
+    expect(groups[0].average).toBe(88); // only the graded one counts
   });
 });

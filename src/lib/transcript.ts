@@ -9,9 +9,11 @@ function weightOf(e: TranscriptEntry): number {
   return e.credits != null ? e.credits : 1;
 }
 
-/** Entries that carry a usable numeric grade. */
+/** Entries that count toward averages: a graded status with a numeric grade. */
 export function graded(entries: TranscriptEntry[]): TranscriptEntry[] {
-  return entries.filter((e) => typeof e.grade === "number" && !Number.isNaN(e.grade));
+  return entries.filter(
+    (e) => e.status === "graded" && typeof e.grade === "number" && !Number.isNaN(e.grade),
+  );
 }
 
 /** Credit-weighted mean of graded entries, or null if none contribute weight. */
@@ -132,15 +134,22 @@ export function extremes(entries: TranscriptEntry[]): {
 }
 
 export interface TranscriptTotals {
-  courses: number;
+  /** Graded courses — the ones counted in the average. */
+  graded: number;
+  /** Summed credits of graded courses. */
   credits: number;
-  gradedCount: number;
+  /** Courses currently in progress (no grade yet). */
+  inProgress: number;
+  /** Credit (CR) courses. */
+  credit: number;
 }
 
 export function totals(entries: TranscriptEntry[]): TranscriptTotals {
+  const g = graded(entries);
   return {
-    courses: entries.length,
-    credits: sumCredits(entries),
-    gradedCount: graded(entries).length,
+    graded: g.length,
+    credits: sumCredits(g),
+    inProgress: entries.filter((e) => e.status === "in-progress").length,
+    credit: entries.filter((e) => e.status === "credit").length,
   };
 }

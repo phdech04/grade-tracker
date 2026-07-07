@@ -45,8 +45,41 @@ export interface AppDataV3 {
   courses: Course[];
 }
 
-export function migrateV3(data: AppDataV3): AppData {
+export function migrateV3(data: AppDataV3): AppDataV4 {
   return { version: 4, courses: data.courses, transcript: [] };
+}
+
+// --- v4: transcript added, before per-course status (graded/CR/in-progress) --
+
+/** v4 transcript entry: the current TranscriptEntry minus `status`. */
+export interface TranscriptEntryV4 {
+  id: string;
+  code?: string;
+  name: string;
+  term: string;
+  credits?: number;
+  grade?: number;
+  source: "import" | "manual" | "course";
+  courseId?: string;
+}
+
+export interface AppDataV4 {
+  version: 4;
+  courses: Course[];
+  transcript: TranscriptEntryV4[];
+}
+
+export function migrateV4(data: AppDataV4): AppData {
+  return {
+    version: 5,
+    courses: data.courses,
+    transcript: data.transcript.map((e) => ({
+      ...e,
+      // A v4 entry with a number was a graded course; without one, treat it as
+      // still in progress (a neutral, average-excluded status).
+      status: e.grade != null ? ("graded" as const) : ("in-progress" as const),
+    })),
+  };
 }
 
 // --- v1: score/max + percentage-vs-points model -----------------------------

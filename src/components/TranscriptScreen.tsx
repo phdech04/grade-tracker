@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Course, TranscriptEntry } from "../types";
 import { byTerm, cumulativeAverage, extremes, graded, totals } from "../lib/transcript";
+import { gradeSummary } from "../lib/grades";
 import { gradeColor, pct } from "../lib/format";
 import { uid } from "../lib/storage";
 
@@ -10,12 +11,11 @@ interface Props {
   onChange: (entries: TranscriptEntry[]) => void;
   /** Opens the transcript import modal (wired once that feature lands). */
   onImport?: () => void;
-  /** Opens the pull-from-in-progress-courses picker (wired once that lands). */
-  onAddFromCourses?: () => void;
 }
 
-export function TranscriptScreen({ transcript, onChange, onImport, onAddFromCourses }: Props) {
+export function TranscriptScreen({ transcript, courses, onChange, onImport }: Props) {
   const [editing, setEditing] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   const groups = useMemo(() => byTerm(transcript), [transcript]);
   const gradedEntries = useMemo(() => graded(transcript), [transcript]);
@@ -33,6 +33,26 @@ export function TranscriptScreen({ transcript, onChange, onImport, onAddFromCour
     setEditing(true);
   };
 
+  /** Add or refresh a transcript entry from an in-progress course's current grade. */
+  const upsertFromCourse = (course: Course) => {
+    const s = gradeSummary(course);
+    const grade = s.current != null ? Math.round(s.current) : undefined;
+    const existing = transcript.find((e) => e.courseId === course.id);
+    const entry: TranscriptEntry = {
+      id: existing?.id ?? uid(),
+      code: course.code,
+      name: course.name,
+      term: course.term ?? "",
+      credits: course.credits,
+      grade,
+      source: "course",
+      courseId: course.id,
+    };
+    onChange(
+      existing ? transcript.map((e) => (e.id === existing.id ? entry : e)) : [...transcript, entry],
+    );
+  };
+
   return (
     <div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -44,8 +64,8 @@ export function TranscriptScreen({ transcript, onChange, onImport, onAddFromCour
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          {onAddFromCourses && (
-            <button onClick={onAddFromCourses} className="btn-ghost">
+          {courses.length > 0 && (
+            <button onClick={() => setPicking(true)} className="btn-ghost">
               Add finished course
             </button>
           )}
@@ -115,6 +135,70 @@ export function TranscriptScreen({ transcript, onChange, onImport, onAddFromCour
           )}
         </>
       )}
+
+      {picking && (
+        <CoursePicker
+          courses={courses}
+          transcript={transcript}
+          onPick={upsertFromCourse}
+          onClose={() => setPicking(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function CoursePicker({
+  courses,
+  transcript,
+  onPick,
+  onClose,
+}: {
+  courses: Course[];
+  transcript: TranscriptEntry[];
+  onPick: (course: Course) => void;
+  onClose: () => void;
+}) {
+  const added = new Set(transcript.map((e) => e.courseId).filter(Boolean));
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="card relative z-10 max-h-[80vh] w-full max-w-lg overflow-hidden bg-paper-card shadow-lift">
+        <div className="flex items-center justify-between border-b border-line/70 px-5 py-4">
+          <h2 className="font-display text-lg font-semibold">Add a finished course</h2>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full text-ink-faint hover:bg-paper-sunk">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="max-h-[calc(80vh-64px)] overflow-y-auto p-4">
+          <p className="mb-3 text-sm text-ink-soft">
+            Pull an in-progress course into your transcript using its current grade. You can adjust
+            the grade afterward.
+          </p>
+          <ul className="divide-y divide-line/60 overflow-hidden rounded-xl border border-line">
+            {courses.map((c) => {
+              const s = gradeSummary(c);
+              const isAdded = added.has(c.id);
+              return (
+                <li key={c.id} className="flex items-center gap-3 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{c.name}</div>
+                    <div className="text-[11px] text-ink-faint">
+                      {[c.code, c.term].filter(Boolean).join(" · ") || "No term"} · now {pct(s.current, 0)}
+                    </div>
+                  </div>
+                  <button onClick={() => onPick(c)} className={isAdded ? "btn-ghost" : "btn-accent"}>
+                    {isAdded ? "Update" : "Add"}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }

@@ -5,10 +5,12 @@ import {
   migrateV2,
   migrateV3,
   migrateV4,
+  migrateV5,
   type AppDataV1,
   type AppDataV2,
   type AppDataV3,
   type AppDataV4,
+  type AppDataV5,
   type CourseV1,
   type CourseV2,
 } from "./migrate";
@@ -231,5 +233,27 @@ describe("migrateV4", () => {
     const out = migrateV4({ version: 4, courses: [] } as unknown as AppDataV4);
     expect(out.version).toBe(5);
     expect(out.transcript).toEqual([]);
+  });
+});
+
+describe("migrateV5", () => {
+  it("bumps to v6 and adds an empty plan config", () => {
+    const v5: AppDataV5 = { version: 5, courses: [], transcript: [] };
+    const out = migrateV5(v5);
+    expect(out.version).toBe(6);
+    expect(out.plan).toEqual({ majorIds: [] });
+  });
+
+  it("preserves courses and transcript", () => {
+    const v5: AppDataV5 = {
+      version: 5,
+      courses: [],
+      transcript: [
+        { id: "a", name: "Algebra", term: "Fall 2024", grade: 84, status: "graded", source: "import" },
+      ],
+    };
+    const out = migrateV5(v5);
+    expect(out.transcript).toHaveLength(1);
+    expect(out.transcript[0].grade).toBe(84);
   });
 });

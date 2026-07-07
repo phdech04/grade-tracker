@@ -1,43 +1,53 @@
-import type { AppData, Course, TranscriptEntry, TranscriptStatus } from "../types";
+import type { AppData, Course, PlanConfig, TranscriptEntry, TranscriptStatus } from "../types";
 import {
   migrateV1,
   migrateV2,
   migrateV3,
   migrateV4,
+  migrateV5,
   type AppDataV1,
   type AppDataV2,
   type AppDataV3,
   type AppDataV4,
+  type AppDataV5,
 } from "./migrate";
 
 // The key predates later schema versions; the `version` field inside distinguishes.
 const DATA_KEY = "grade-tracker:data:v1";
 
-const empty: AppData = { version: 5, courses: [], transcript: [] };
+const empty: AppData = { version: 6, courses: [], transcript: [], plan: { majorIds: [] } };
+
+/** Normalise a v6-shaped payload into clean AppData, backfilling any missing
+ * fields (events / transcript status / plan) so hand-edited or partial data
+ * can't crash the app downstream. */
+function backfillV6(p: { courses?: unknown; transcript?: unknown; plan?: unknown }): AppData {
+  const courses = (p.courses as Course[]).map((c) => ({ ...c, events: c.events ?? [] }));
+  type MaybeStatus = Omit<TranscriptEntry, "status"> & { status?: TranscriptStatus };
+  const transcript = Array.isArray(p.transcript)
+    ? (p.transcript as MaybeStatus[]).map(
+        (e): TranscriptEntry => ({
+          ...e,
+          status: e.status ?? (e.grade != null ? "graded" : "in-progress"),
+        }),
+      )
+    : [];
+  const rawPlan = p.plan as PlanConfig | undefined;
+  const plan: PlanConfig = { majorIds: Array.isArray(rawPlan?.majorIds) ? rawPlan.majorIds : [] };
+  return { version: 6, courses, transcript, plan };
+}
 
 function coerce(parsed: unknown): AppData | null {
-  const p = parsed as { version?: number; courses?: unknown; transcript?: unknown };
+  const p = parsed as { version?: number; courses?: unknown };
   if (!p || !Array.isArray(p.courses)) return null;
-  if (p.version === 5) {
-    // Backfill defensively — a hand-edited or partial payload may lack a field,
-    // and the app assumes course.events and top-level transcript are arrays.
-    const courses = (p.courses as Course[]).map((c) => ({ ...c, events: c.events ?? [] }));
-    type MaybeStatus = Omit<TranscriptEntry, "status"> & { status?: TranscriptStatus };
-    const transcript = Array.isArray(p.transcript)
-      ? (p.transcript as MaybeStatus[]).map(
-          (e): TranscriptEntry => ({
-            ...e,
-            // Backfill a missing status defensively (hand-edited payloads).
-            status: e.status ?? (e.grade != null ? "graded" : "in-progress"),
-          }),
-        )
-      : [];
-    return { version: 5, courses, transcript };
-  }
-  if (p.version === 4) return migrateV4(p as AppDataV4);
-  if (p.version === 3) return migrateV4(migrateV3(p as AppDataV3));
-  if (p.version === 2) return migrateV4(migrateV3(migrateV2(p as AppDataV2)));
-  if (p.version === 1) return migrateV4(migrateV3(migrateV2(migrateV1(p as AppDataV1))));
+  // migrateVN do the structural version bumps; backfillV6 does the defensive
+  // field backfills once at the end.
+  if (p.version === 6) return backfillV6(p);
+  if (p.version === 5) return backfillV6(migrateV5(p as AppDataV5));
+  if (p.version === 4) return backfillV6(migrateV5(migrateV4(p as AppDataV4)));
+  if (p.version === 3) return backfillV6(migrateV5(migrateV4(migrateV3(p as AppDataV3))));
+  if (p.version === 2) return backfillV6(migrateV5(migrateV4(migrateV3(migrateV2(p as AppDataV2)))));
+  if (p.version === 1)
+    return backfillV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(p as AppDataV1))))));
   return null;
 }
 

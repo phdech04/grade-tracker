@@ -114,8 +114,14 @@ export interface TranscriptEntry {
   courseId?: string;
 }
 
+/** Degree-planner configuration: which major(s) the student is pursuing. */
+export interface PlanConfig {
+  majorIds: string[];
+}
+
 export interface AppData {
-  version: 5;
+  version: 6;
   courses: Course[];
   transcript: TranscriptEntry[];
+  plan: PlanConfig;
 }

@@ -1,4 +1,4 @@
-import type { AppData, Component, Course, DropRule, Hurdle, Item } from "../types";
+import type { AppData, Component, Course, DropRule, Hurdle, Item, TranscriptEntry } from "../types";
 import { countTarget } from "./grades";
 
 // Historical stored shapes. Each migrateVN takes the version-N payload and
@@ -69,7 +69,7 @@ export interface AppDataV4 {
   transcript: TranscriptEntryV4[];
 }
 
-export function migrateV4(data: AppDataV4): AppData {
+export function migrateV4(data: AppDataV4): AppDataV5 {
   return {
     version: 5,
     courses: data.courses,
@@ -83,6 +83,23 @@ export function migrateV4(data: AppDataV4): AppData {
           status: e.grade != null ? ("graded" as const) : ("in-progress" as const),
         }))
       : [],
+  };
+}
+
+// --- v5: transcript statuses added, before the degree-planner config --------
+
+export interface AppDataV5 {
+  version: 5;
+  courses: Course[];
+  transcript: TranscriptEntry[];
+}
+
+export function migrateV5(data: AppDataV5): AppData {
+  return {
+    version: 6,
+    courses: data.courses,
+    transcript: Array.isArray(data.transcript) ? data.transcript : [],
+    plan: { majorIds: [] },
   };
 }
 

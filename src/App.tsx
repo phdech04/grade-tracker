@@ -6,6 +6,7 @@ import { CourseDetail } from "./components/CourseDetail";
 import { ImportReview } from "./components/ImportReview";
 import { Settings } from "./components/Settings";
 import { TranscriptScreen } from "./components/TranscriptScreen";
+import { TranscriptImport } from "./components/TranscriptImport";
 
 type View =
   | { kind: "dashboard" }
@@ -29,6 +30,7 @@ export default function App() {
   const [data, setData] = useState<AppData>(() => loadData());
   const [view, setView] = useState<View>({ kind: "dashboard" });
   const [importing, setImporting] = useState(false);
+  const [importingTranscript, setImportingTranscript] = useState(false);
 
   useEffect(() => saveData(data), [data]);
 
@@ -87,6 +89,7 @@ export default function App() {
             transcript={data.transcript}
             courses={data.courses}
             onChange={(transcript) => setData((d) => ({ ...d, transcript }))}
+            onImport={() => setImportingTranscript(true)}
           />
         )}
 
@@ -108,6 +111,16 @@ export default function App() {
             commit(course);
             setImporting(false);
             setView({ kind: "course", id: course.id });
+          }}
+        />
+      )}
+
+      {importingTranscript && (
+        <TranscriptImport
+          onCancel={() => setImportingTranscript(false)}
+          onSave={(entries) => {
+            setData((d) => ({ ...d, transcript: [...d.transcript, ...entries] }));
+            setImportingTranscript(false);
           }}
         />
       )}

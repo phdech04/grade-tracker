@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import type { Course, TranscriptEntry } from "../types";
-import { byTerm, cumulativeAverage, extremes, graded, totals } from "../lib/transcript";
+import { byTerm, cumulativeAverage, distribution, extremes, graded, totals } from "../lib/transcript";
 import { gradeSummary } from "../lib/grades";
 import { gradeColor, pct } from "../lib/format";
 import { uid } from "../lib/storage";
+import { Distribution, TermTrend } from "./TranscriptCharts";
 
 interface Props {
   transcript: TranscriptEntry[];
@@ -85,6 +86,19 @@ export function TranscriptScreen({ transcript, courses, onChange, onImport }: Pr
       ) : (
         <>
           {gradedEntries.length > 0 && <PerformanceSummary transcript={transcript} />}
+
+          {gradedEntries.length > 0 && (
+            <div className="mt-5 grid gap-5 lg:grid-cols-2">
+              <div className="card p-5">
+                <p className="label mb-3">Average by term</p>
+                <TermTrend groups={groups} />
+              </div>
+              <div className="card p-5">
+                <p className="label mb-3">Grade distribution</p>
+                <Distribution bands={distribution(transcript)} />
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 flex items-center justify-between">
             <h2 className="font-display text-lg font-semibold">Courses</h2>

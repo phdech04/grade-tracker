@@ -13,16 +13,18 @@ const e = (p: Partial<TranscriptEntry>): TranscriptEntry => ({
 });
 
 describe("takenFromTranscript", () => {
-  it("includes graded and CR passes, normalized, and skips ungraded/withdrawn/no-code", () => {
+  it("includes passing grades and CR, and skips fails/ungraded/withdrawn/no-code", () => {
     const taken = takenFromTranscript([
-      e({ code: "cs135", status: "graded" }),
+      e({ code: "cs135", status: "graded", grade: 83 }),
       e({ code: "CS 136L", status: "credit" }),
+      e({ code: "MATH 100", status: "graded", grade: 35 }), // failed → not passed
       e({ code: "MATH 999", status: "in-progress" }),
       e({ code: "PHYS 111", status: "withdrawn" }),
-      e({ code: undefined, status: "graded" }),
+      e({ code: undefined, status: "graded", grade: 90 }),
     ]);
     expect(taken.has("CS 135")).toBe(true);
     expect(taken.has("CS 136L")).toBe(true);
+    expect(taken.has("MATH 100")).toBe(false);
     expect(taken.has("MATH 999")).toBe(false);
     expect(taken.has("PHYS 111")).toBe(false);
     expect(taken.size).toBe(2);

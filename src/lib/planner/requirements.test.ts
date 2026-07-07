@@ -52,15 +52,17 @@ describe("evaluate — Mathematical Finance", () => {
 describe("evaluate — Applied Math (pattern requirements)", () => {
   const major = majorById("applied-math-scicomp")!;
 
-  it("satisfies '2 more AMATH 300/400-level' once two qualifying courses are taken", () => {
-    const p = evaluate(major, new Set(["AMATH 342", "AMATH 445"]), catalog);
+  it("satisfies '2 more AMATH 300/400-level' with two non-core AMATH courses", () => {
+    // AMATH 391 and 442 are not named in the core/chooseN groups.
+    const p = evaluate(major, new Set(["AMATH 391", "AMATH 442"]), catalog);
     const pat = p.groups.find((g) => g.label.startsWith("2 more AMATH"));
     expect(pat?.satisfied).toBe(true);
   });
 
-  it("does not satisfy the 400-level pattern with only a 300-level course", () => {
-    const p = evaluate(major, new Set(["AMATH 342"]), catalog);
-    const pat400 = p.groups.find((g) => g.label.startsWith("1 more AMATH at the 400"));
-    expect(pat400?.satisfied).toBe(false);
+  it("does NOT count a core course (AMATH 445) toward the 'additional AMATH' patterns", () => {
+    // Regression: core/chooseN courses must not satisfy the 'additional' patterns.
+    const p = evaluate(major, new Set(["AMATH 445", "AMATH 342"]), catalog);
+    expect(p.groups.find((g) => g.label.startsWith("2 more AMATH"))?.satisfied).toBe(false);
+    expect(p.groups.find((g) => g.label.startsWith("1 more AMATH at the 400"))?.satisfied).toBe(false);
   });
 });

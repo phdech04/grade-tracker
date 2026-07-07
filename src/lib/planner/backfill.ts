@@ -6,13 +6,16 @@ import { normalizeCode } from "./codes";
 /** The 8 study-term levels of a standard co-op BMath degree. */
 export const LEVELS = ["1A", "1B", "2A", "2B", "3A", "3B", "4A", "4B"] as const;
 
-/** Course codes the student has passed (graded or CR credit), normalized. */
+/** Waterloo's passing grade. */
+const PASS = 50;
+
+/** Course codes the student has passed — a CR credit, or a graded ≥ 50%. */
 export function takenFromTranscript(transcript: TranscriptEntry[]): Set<string> {
   const set = new Set<string>();
   for (const e of transcript) {
-    if ((e.status === "graded" || e.status === "credit") && e.code) {
-      set.add(normalizeCode(e.code));
-    }
+    if (!e.code) continue;
+    const passed = e.status === "credit" || (e.status === "graded" && (e.grade ?? 0) >= PASS);
+    if (passed) set.add(normalizeCode(e.code));
   }
   return set;
 }

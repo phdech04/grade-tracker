@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { PlanConfig, TranscriptEntry } from "../types";
 import { MAJORS } from "../data/majors";
-import { COURSES } from "../data/courses";
+import { CATALOG } from "../data/catalog";
 import { buildCatalog, evaluate, type MajorProgress } from "../lib/planner/requirements";
 import { takenFromTranscript } from "../lib/planner/backfill";
 
@@ -11,7 +11,7 @@ interface Props {
   onChangePlan: (plan: PlanConfig) => void;
 }
 
-const catalog = buildCatalog(COURSES);
+const catalog = buildCatalog(CATALOG);
 
 export function PlanScreen({ transcript, plan, onChangePlan }: Props) {
   const taken = useMemo(() => takenFromTranscript(transcript), [transcript]);

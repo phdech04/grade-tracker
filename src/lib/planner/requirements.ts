@@ -50,11 +50,14 @@ function held(code: string, taken: Set<string>, catalog: Catalog): boolean {
   return false;
 }
 
-/** Recursively evaluate one requirement node → { met, remaining recommended codes }. */
+/** Recursively evaluate one requirement node → { met, remaining recommended codes }.
+ * `named` = every course explicitly named elsewhere in the tree (core/chooseN);
+ * pattern requirements count only "additional" courses, i.e. not in `named`. */
 function evalNode(
   node: ReqGroup,
   taken: Set<string>,
   catalog: Catalog,
+  named: Set<string>,
 ): { met: boolean; remaining: string[] } {
   switch (node.kind) {
     case "course": {
@@ -62,14 +65,13 @@ function evalNode(
       return { met, remaining: met ? [] : [normalizeCode(node.code)] };
     }
     case "all": {
-      const parts = node.of.map((n) => evalNode(n, taken, catalog));
+      const parts = node.of.map((n) => evalNode(n, taken, catalog, named));
       return { met: parts.every((p) => p.met), remaining: parts.flatMap((p) => p.remaining) };
     }
     case "chooseN": {
-      const parts = node.of.map((n) => evalNode(n, taken, catalog));
+      const parts = node.of.map((n) => evalNode(n, taken, catalog, named));
       const metCount = parts.filter((p) => p.met).length;
       if (metCount >= node.n) return { met: true, remaining: [] };
-      // Recommend the cheapest (fewest outstanding courses) unmet options.
       const unmet = parts
         .filter((p) => !p.met)
         .sort((a, b) => a.remaining.length - b.remaining.length)
@@ -77,17 +79,26 @@ function evalNode(
       return { met: false, remaining: unmet.flatMap((p) => p.remaining) };
     }
     case "pattern": {
-      const matches = [...taken].filter((code) => matchesPattern(code, node)).length;
+      const matches = patternMatches(node, taken, named).length;
       const short = Math.max(0, node.n - matches);
       if (short === 0) return { met: true, remaining: [] };
-      // Recommend from an explicit pool when present, else leave abstract.
-      const pool = (node.pool ?? [])
-        .map(normalizeCode)
-        .filter((c) => !held(c, taken, catalog))
-        .slice(0, short);
+      const pool = dedupeByCourse(
+        (node.pool ?? []).filter((c) => !held(c, taken, catalog) && !named.has(normalizeCode(c))),
+        catalog,
+      ).slice(0, short);
       return { met: false, remaining: pool };
     }
   }
+}
+
+/** Taken courses that count toward a pattern: match subject/level (or pool) and
+ * are NOT a course named by another requirement (so they're genuinely "additional"). */
+function patternMatches(
+  node: Extract<ReqGroup, { kind: "pattern" }>,
+  taken: Set<string>,
+  named: Set<string>,
+): string[] {
+  return [...taken].filter((code) => !named.has(normalizeCode(code)) && matchesPattern(code, node));
 }
 
 function matchesPattern(code: string, node: Extract<ReqGroup, { kind: "pattern" }>): boolean {
@@ -102,30 +113,61 @@ function matchesPattern(code: string, node: Extract<ReqGroup, { kind: "pattern" 
   return true;
 }
 
+/** Every course code named by a `course` leaf anywhere in the tree (normalized). */
+function namedCourses(node: ReqGroup): Set<string> {
+  const set = new Set<string>();
+  const walk = (n: ReqGroup) => {
+    if (n.kind === "course") set.add(normalizeCode(n.code));
+    else if (n.kind === "all" || n.kind === "chooseN") n.of.forEach(walk);
+  };
+  walk(node);
+  return set;
+}
+
+/** Collapse codes that are the same catalog course (cross-listed) to one. */
+function dedupeByCourse(codes: string[], catalog: Catalog): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const code of codes) {
+    const canon = normalizeCode(catalog.get(normalizeCode(code))?.code ?? code);
+    if (seen.has(canon)) continue;
+    seen.add(canon);
+    out.push(normalizeCode(code));
+  }
+  return out;
+}
+
 export function evaluate(major: Major, taken: Set<string>, catalog: Catalog): MajorProgress {
   const norm = new Set([...taken].map(normalizeCode));
+  const named = namedCourses(major.requirement);
 
   // Top-level groups for display (unwrap the outer "all").
   const topNodes = major.requirement.kind === "all" ? major.requirement.of : [major.requirement];
   const groups: GroupProgress[] = topNodes.map((n) => {
-    const r = evalNode(n, norm, catalog);
+    const r = evalNode(n, norm, catalog, named);
     const need = countLeaves(n);
     return {
       label: nodeLabel(n),
       need,
-      have: need - outstandingLeaves(n, norm, catalog),
+      have: need - outstandingLeaves(n, norm, catalog, named),
       satisfied: r.met,
       remaining: r.remaining,
     };
   });
 
-  // Units: every taken math-faculty course counts toward math units; the rest
-  // toward non-math. Unknown courses fall back to 0.5 units.
+  // Units: math-faculty courses count toward math units, the rest toward
+  // non-math. Dedupe cross-listed aliases so a course isn't counted twice.
   let mathUnits = 0;
   let nonMathUnits = 0;
+  const counted = new Set<string>();
   for (const code of norm) {
-    const units = catalog.get(code)?.units ?? 0.5;
-    if (isMathSubject(code)) mathUnits += units;
+    const course = catalog.get(code);
+    const canon = normalizeCode(course?.code ?? code);
+    if (counted.has(canon)) continue;
+    counted.add(canon);
+    const units = course?.units ?? 0.5;
+    const isMath = course ? course.faculty === "math" : isMathSubject(code);
+    if (isMath) mathUnits += units;
     else nonMathUnits += units;
   }
 
@@ -159,14 +201,15 @@ function countLeaves(n: ReqGroup): number {
   return n.of.reduce((s, c) => s + countLeaves(c), 0);
 }
 
-function outstandingLeaves(n: ReqGroup, taken: Set<string>, catalog: Catalog): number {
+function outstandingLeaves(n: ReqGroup, taken: Set<string>, catalog: Catalog, named: Set<string>): number {
   if (n.kind === "course") return held(n.code, taken, catalog) ? 0 : 1;
   if (n.kind === "pattern") {
-    const matches = [...taken].filter((c) => matchesPattern(c, n)).length;
-    return Math.max(0, n.n - matches);
+    return Math.max(0, n.n - patternMatches(n, taken, named).length);
   }
-  if (n.kind === "all") return n.of.reduce((s, c) => s + outstandingLeaves(c, taken, catalog), 0);
+  if (n.kind === "all") {
+    return n.of.reduce((s, c) => s + outstandingLeaves(c, taken, catalog, named), 0);
+  }
   // chooseN: outstanding = n - (met options), floored at 0.
-  const met = n.of.filter((c) => evalNode(c, taken, catalog).met).length;
+  const met = n.of.filter((c) => evalNode(c, taken, catalog, named).met).length;
   return Math.max(0, n.n - met);
 }

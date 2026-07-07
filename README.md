@@ -5,7 +5,9 @@ the assessment schedule** with Google Gemini (read server-side, so no key in the
 browser). You then track marks + projections and keep an eye on upcoming
 deadlines as the term goes. A **Transcript** view records completed courses and
 shows your overall performance — cumulative average, per-term trend, and grade
-distribution. Courses, marks, deadlines, and transcript all live in your browser
+distribution. A **Plan** view maps your progress toward a chosen Math major (or
+double major) and suggests a prerequisite-valid course sequence for the terms
+ahead. Courses, marks, deadlines, transcript, and plan all live in your browser
 (`localStorage`); back them up with the JSON export in Settings.
 
 ## Setup
@@ -60,6 +62,11 @@ further, restrict the key by HTTP referrer in Google AI Studio / Cloud Console.
 - `src/lib/transcript.ts` — performance math (credit-weighted cumulative and
   per-term averages, grade distribution, best/worst). Covered by
   `src/lib/transcript.test.ts`.
+- `src/lib/planner/` — degree planner: boolean prerequisite evaluation
+  (`prereq.ts`), requirement-tree progress (`requirements.ts`), and a
+  critical-path term scheduler (`scheduler.ts`). Curated reference data lives in
+  `src/data/{courses,prereqs,majors,catalog}.ts` (from the `courses/` and
+  `majors/` calendar PDFs). Covered by tests under `src/lib/planner/`.
 - `src/lib/grades.ts` — the calculation engine. Items are scored as percentages;
   component weights are unit-agnostic (percent or points — only the ratios
   between them matter), with best-N-of-M / drop-lowest rules and "whichever is

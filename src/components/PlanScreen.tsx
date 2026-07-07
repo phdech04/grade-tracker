@@ -3,7 +3,8 @@ import type { PlanConfig, TranscriptEntry } from "../types";
 import { MAJORS } from "../data/majors";
 import { CATALOG } from "../data/catalog";
 import { buildCatalog, evaluate, type MajorProgress } from "../lib/planner/requirements";
-import { takenFromTranscript } from "../lib/planner/backfill";
+import { LEVELS, pastStudyTerms, takenFromTranscript } from "../lib/planner/backfill";
+import { schedule } from "../lib/planner/scheduler";
 
 interface Props {
   transcript: TranscriptEntry[];
@@ -69,16 +70,93 @@ export function PlanScreen({ transcript, plan, onChangePlan }: Props) {
           Select a major above to see your progress.
         </div>
       ) : (
-        <div className="mt-6 grid gap-5 lg:grid-cols-2">
-          {progresses.map(({ major, progress }) => (
-            <ProgressCard
-              key={major.id}
-              name={major.name}
-              progress={progress}
-              minMath={major.minMathUnits}
-              minNonMath={major.minNonMathUnits}
-            />
-          ))}
+        <>
+          <div className="mt-6 grid gap-5 lg:grid-cols-2">
+            {progresses.map(({ major, progress }) => (
+              <ProgressCard
+                key={major.id}
+                name={major.name}
+                progress={progress}
+                minMath={major.minMathUnits}
+                minNonMath={major.minNonMathUnits}
+              />
+            ))}
+          </div>
+
+          <TermMap transcript={transcript} taken={taken} majors={selected} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function TermMap({
+  transcript,
+  taken,
+  majors,
+}: {
+  transcript: TranscriptEntry[];
+  taken: Set<string>;
+  majors: typeof MAJORS;
+}) {
+  const { columns, unplaced } = useMemo(() => {
+    const past = pastStudyTerms(transcript);
+    const remainingLevels = LEVELS.slice(past.length);
+    const sched = schedule({ majors, taken, catalog, levels: remainingLevels });
+    const cols = [
+      ...past.map((p) => ({ level: p.level, courses: p.courses, future: false })),
+      ...sched.terms.map((t) => ({ level: t.level, courses: t.courses, future: true })),
+    ];
+    return { columns: cols, unplaced: sched.unplaced };
+  }, [transcript, taken, majors]);
+
+  return (
+    <div className="mt-8">
+      <h2 className="font-display text-lg font-semibold">Suggested sequence</h2>
+      <p className="mt-1 text-sm text-ink-soft">
+        Past terms are from your transcript; upcoming terms are a prerequisite-valid suggestion to
+        finish the remaining requirements.
+      </p>
+
+      <div className="mt-3 flex gap-3 overflow-x-auto pb-2">
+        {columns.map((c) => (
+          <div key={c.level} className="w-40 shrink-0">
+            <div
+              className={`rounded-t-lg px-3 py-1.5 text-center text-xs font-semibold ${
+                c.future ? "bg-accent-wash text-accent" : "bg-paper-sunk text-ink-soft"
+              }`}
+            >
+              {c.level}
+              {c.future && " · planned"}
+            </div>
+            <div className="min-h-24 space-y-1.5 rounded-b-lg border border-line bg-paper-card p-2">
+              {c.courses.length === 0 ? (
+                <p className="py-2 text-center text-[11px] text-ink-faint">—</p>
+              ) : (
+                c.courses.map((code) => (
+                  <div
+                    key={code}
+                    className={`truncate rounded px-2 py-1 text-xs ${
+                      c.future
+                        ? "border border-accent/30 bg-accent-wash/40 text-ink"
+                        : "bg-paper-sunk text-ink-soft"
+                    }`}
+                    title={code}
+                  >
+                    {code}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {unplaced.length > 0 && (
+        <div className="mt-3 rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn">
+          <span className="font-semibold">Won't fit in {LEVELS.length} terms:</span>{" "}
+          {unplaced.join(", ")}. You may need an extra term, or a prerequisite is missing from the
+          catalog.
         </div>
       )}
     </div>

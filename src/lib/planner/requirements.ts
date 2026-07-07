@@ -69,12 +69,19 @@ function evalNode(
       return { met: parts.every((p) => p.met), remaining: parts.flatMap((p) => p.remaining) };
     }
     case "chooseN": {
-      const parts = node.of.map((n) => evalNode(n, taken, catalog, named));
+      const parts = node.of.map((n) => ({ node: n, ...evalNode(n, taken, catalog, named) }));
       const metCount = parts.filter((p) => p.met).length;
       if (metCount >= node.n) return { met: true, remaining: [] };
       const unmet = parts
         .filter((p) => !p.met)
-        .sort((a, b) => a.remaining.length - b.remaining.length)
+        // Fewest courses left to finish; break ties toward the option the
+        // student has already partially completed (finish what you started,
+        // and avoid pulling in a wholly-new prereq chain).
+        .sort((a, b) => {
+          const byRemaining = a.remaining.length - b.remaining.length;
+          if (byRemaining !== 0) return byRemaining;
+          return heldLeaves(b.node, taken, catalog) - heldLeaves(a.node, taken, catalog);
+        })
         .slice(0, node.n - metCount);
       return { met: false, remaining: unmet.flatMap((p) => p.remaining) };
     }
@@ -111,6 +118,15 @@ function matchesPattern(code: string, node: Extract<ReqGroup, { kind: "pattern" 
   if (node.minLevel != null && p.number < node.minLevel) return false;
   if (node.maxLevel != null && p.number > node.maxLevel) return false;
   return true;
+}
+
+/** Count of course leaves in a node that the student already holds. */
+function heldLeaves(node: ReqGroup, taken: Set<string>, catalog: Catalog): number {
+  if (node.kind === "course") return held(node.code, taken, catalog) ? 1 : 0;
+  if (node.kind === "all" || node.kind === "chooseN") {
+    return node.of.reduce((s, c) => s + heldLeaves(c, taken, catalog), 0);
+  }
+  return 0;
 }
 
 /** Every course code named by a `course` leaf anywhere in the tree (normalized). */

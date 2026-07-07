@@ -1,4 +1,5 @@
 import type { TranscriptEntry } from "../../types";
+import { compareTerms } from "../transcript";
 import { normalizeCode } from "./codes";
 
 // Derive the planner's "where you are now" inputs from the transcript.
@@ -35,4 +36,37 @@ export function completedStudyTerms(transcript: TranscriptEntry[]): number {
 /** Remaining study terms in a standard 8-term degree (never negative). */
 export function remainingStudyTerms(transcript: TranscriptEntry[]): number {
   return Math.max(0, LEVELS.length - completedStudyTerms(transcript));
+}
+
+export interface PastTerm {
+  level: string;
+  courses: string[];
+}
+
+/**
+ * The student's completed study terms mapped onto the level skeleton (1A, 1B, …)
+ * with the passed course codes in each. Terms with no graded course (pure co-op
+ * work terms) are skipped.
+ */
+export function pastStudyTerms(transcript: TranscriptEntry[]): PastTerm[] {
+  const byTerm = new Map<string, { hasGraded: boolean; codes: string[] }>();
+  const order: string[] = [];
+  for (const e of transcript) {
+    if (!e.code) continue;
+    const passed = e.status === "credit" || (e.status === "graded" && (e.grade ?? 0) >= 50);
+    if (!passed) continue;
+    let g = byTerm.get(e.term);
+    if (!g) {
+      g = { hasGraded: false, codes: [] };
+      byTerm.set(e.term, g);
+      order.push(e.term);
+    }
+    g.codes.push(normalizeCode(e.code));
+    if (e.status === "graded") g.hasGraded = true;
+  }
+  const studyTerms = order.filter((t) => byTerm.get(t)!.hasGraded).sort(compareTerms);
+  return studyTerms.map((term, i) => ({
+    level: LEVELS[i] ?? `Term ${i + 1}`,
+    courses: byTerm.get(term)!.codes,
+  }));
 }

@@ -1,4 +1,4 @@
-import type { AppData, Course, TranscriptEntry } from "../types";
+import type { AppData, Course, TranscriptEntry, TranscriptStatus } from "../types";
 import {
   migrateV1,
   migrateV2,
@@ -22,7 +22,16 @@ function coerce(parsed: unknown): AppData | null {
     // Backfill defensively — a hand-edited or partial payload may lack a field,
     // and the app assumes course.events and top-level transcript are arrays.
     const courses = (p.courses as Course[]).map((c) => ({ ...c, events: c.events ?? [] }));
-    const transcript = Array.isArray(p.transcript) ? (p.transcript as TranscriptEntry[]) : [];
+    type MaybeStatus = Omit<TranscriptEntry, "status"> & { status?: TranscriptStatus };
+    const transcript = Array.isArray(p.transcript)
+      ? (p.transcript as MaybeStatus[]).map(
+          (e): TranscriptEntry => ({
+            ...e,
+            // Backfill a missing status defensively (hand-edited payloads).
+            status: e.status ?? (e.grade != null ? "graded" : "in-progress"),
+          }),
+        )
+      : [];
     return { version: 5, courses, transcript };
   }
   if (p.version === 4) return migrateV4(p as AppDataV4);

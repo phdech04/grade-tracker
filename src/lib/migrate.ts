@@ -73,12 +73,16 @@ export function migrateV4(data: AppDataV4): AppData {
   return {
     version: 5,
     courses: data.courses,
-    transcript: data.transcript.map((e) => ({
-      ...e,
-      // A v4 entry with a number was a graded course; without one, treat it as
-      // still in progress (a neutral, average-excluded status).
-      status: e.grade != null ? ("graded" as const) : ("in-progress" as const),
-    })),
+    // Guard the array — a hand-edited/partial v4 payload may lack `transcript`;
+    // without this, a thrown map() would be swallowed by loadData and wipe data.
+    transcript: Array.isArray(data.transcript)
+      ? data.transcript.map((e) => ({
+          ...e,
+          // A v4 entry with a number was graded; without one, treat it as still
+          // in progress (a neutral, average-excluded status).
+          status: e.grade != null ? ("graded" as const) : ("in-progress" as const),
+        }))
+      : [],
   };
 }
 

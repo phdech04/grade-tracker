@@ -16,7 +16,7 @@ interface ExtractedTranscriptEntry {
 
 /** Classify a raw transcript grade token into a status and (if graded) a percentage. */
 export function classifyGrade(token: string): { status: TranscriptStatus; grade?: number } {
-  const t = (token || "").trim().toUpperCase();
+  const t = String(token ?? "").trim().toUpperCase();
   if (t === "") return { status: "in-progress" };
   const n = Number(t);
   if (Number.isFinite(n) && t !== "") {

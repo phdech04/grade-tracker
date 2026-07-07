@@ -27,7 +27,7 @@ const SCHEMA = {
         properties: {
           code: { type: "STRING", description: "Course code as written. Empty if none." },
           name: { type: "STRING", description: "Course title." },
-          term: { type: "STRING", description: "Term or level as written. Empty if none." },
+          term: { type: "STRING", description: "Academic term as 'Season YYYY' (no level code). Empty if none." },
           credits: { type: "NUMBER", description: "Credit/unit weight (Attempted column) as a number. 0 if not shown." },
           grade: {
             type: "STRING",

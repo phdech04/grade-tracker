@@ -123,7 +123,7 @@ export function TranscriptScreen({ transcript, courses, onChange, onImport }: Pr
         <EmptyState onAdd={addAndEdit} onImport={onImport} />
       ) : (
         <>
-          {gradedEntries.length > 0 && <PerformanceSummary transcript={transcript} />}
+          <PerformanceSummary transcript={transcript} />
 
           {gradedEntries.length > 0 && (
             <div className="mt-5 grid gap-5 lg:grid-cols-2">
@@ -276,7 +276,7 @@ function PerformanceSummary({ transcript }: { transcript: TranscriptEntry[] }) {
         <p className="mt-0.5 font-display text-2xl font-semibold tabular-nums">{t.graded}</p>
       </div>
       <div>
-        <p className="label">Credits</p>
+        <p className="label">Graded credits</p>
         <p className="mt-0.5 font-display text-2xl font-semibold tabular-nums">
           {Number(t.credits.toFixed(2))}
         </p>

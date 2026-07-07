@@ -226,4 +226,10 @@ describe("migrateV4", () => {
     expect(out.transcript[0].credits).toBe(0.5);
     expect(out.transcript[1].name).toBe("No grade");
   });
+
+  it("tolerates a v4 payload missing the transcript array (no crash, empty)", () => {
+    const out = migrateV4({ version: 4, courses: [] } as unknown as AppDataV4);
+    expect(out.version).toBe(5);
+    expect(out.transcript).toEqual([]);
+  });
 });

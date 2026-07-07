@@ -34,7 +34,12 @@ function htmlToText(html: string): string {
   return text.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-/** Map the raw extraction into transcript entries (drops blank-name rows). */
+/**
+ * Map the raw extraction into transcript entries (drops blank-name rows).
+ * Note: the extractor emits `grade: 0` for non-numeric outcomes (CR/NCR/IP), so
+ * here `0` means "ungraded" → undefined. Manual entry and course-pull, by
+ * contrast, treat a typed 0 as a real 0% grade. Grades are clamped to ≤100.
+ */
 export function toTranscript(ex: ExtractedTranscript): TranscriptEntry[] {
   return (ex.entries || [])
     .filter((e) => e && (e.name || "").trim())
@@ -44,7 +49,10 @@ export function toTranscript(ex: ExtractedTranscript): TranscriptEntry[] {
       name: (e.name || "").trim(),
       term: (e.term || "").trim(),
       credits: typeof e.credits === "number" && e.credits > 0 ? e.credits : undefined,
-      grade: typeof e.grade === "number" && e.grade > 0 && Number.isFinite(e.grade) ? e.grade : undefined,
+      grade:
+        typeof e.grade === "number" && e.grade > 0 && Number.isFinite(e.grade)
+          ? Math.min(100, e.grade)
+          : undefined,
       source: "import" as const,
     }));
 }

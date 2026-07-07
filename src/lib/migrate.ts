@@ -37,7 +37,9 @@ export function migrateV2(data: AppDataV2): AppDataV3 {
 
 // --- v3: dated coursework (events) added, before the transcript existed -----
 
-/** v3 Course is identical to the current Course; v3 had no top-level transcript. */
+// v3 Course is identical to the current Course, so we reuse it. NOTE: if a
+// future version changes Course, freeze a structural CourseV3 here (as CourseV1/
+// CourseV2 do) so "v3 data" doesn't silently drift with the live model.
 export interface AppDataV3 {
   version: 3;
   courses: Course[];

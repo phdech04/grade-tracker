@@ -18,7 +18,7 @@ export function TermTrend({ groups }: { groups: TermGroup[] }) {
   const padBottom = 34;
   const W = Math.max(300, points.length * 84);
   const lo = Math.min(50, Math.floor(Math.min(...points.map((p) => p.avg)) / 10) * 10);
-  const hi = 100;
+  const hi = Math.max(100, ...points.map((p) => p.avg)); // tolerate bonus averages >100
 
   const x = (i: number) =>
     points.length === 1 ? W / 2 : padX + (i * (W - 2 * padX)) / (points.length - 1);

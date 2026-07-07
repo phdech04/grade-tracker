@@ -20,7 +20,7 @@ function coerce(parsed: unknown): AppData | null {
     // Backfill defensively — a hand-edited or partial payload may lack a field,
     // and the app assumes course.events and top-level transcript are arrays.
     const courses = (p.courses as Course[]).map((c) => ({ ...c, events: c.events ?? [] }));
-    const transcript = (p.transcript as TranscriptEntry[] | undefined) ?? [];
+    const transcript = Array.isArray(p.transcript) ? (p.transcript as TranscriptEntry[]) : [];
     return { version: 4, courses, transcript };
   }
   if (p.version === 3) return migrateV3(p as AppDataV3);

@@ -35,6 +35,11 @@ describe("toTranscript", () => {
     expect(out[0].name).toBe("Real");
   });
 
+  it("clamps an out-of-range grade to 100", () => {
+    const [e] = toTranscript(raw([{ code: "X", name: "Bonus", term: "Fall 2025", credits: 0.5, grade: 150 }]));
+    expect(e.grade).toBe(100);
+  });
+
   it("returns an empty array when there are no entries", () => {
     expect(toTranscript(raw([]))).toEqual([]);
   });

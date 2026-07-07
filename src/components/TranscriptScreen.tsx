@@ -275,6 +275,12 @@ function EditList({
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 ? n : undefined;
   };
+  // Grades are percentages — keep them in 0–100 so a typo like "150" can't skew
+  // the averages or overflow the charts.
+  const gradePct = (v: string): number | undefined => {
+    const n = num(v);
+    return n == null ? undefined : Math.min(100, n);
+  };
 
   return (
     <div className="card mt-3 p-4">
@@ -311,8 +317,9 @@ function EditList({
             <input
               type="number"
               min={0}
+              max={100}
               value={e.grade ?? ""}
-              onChange={(ev) => onUpdate(e.id, { grade: num(ev.target.value) })}
+              onChange={(ev) => onUpdate(e.id, { grade: gradePct(ev.target.value) })}
               placeholder="%"
               className="w-16 rounded border border-line bg-paper-card px-2 py-1 text-right text-sm tabular-nums outline-none focus:border-accent"
             />

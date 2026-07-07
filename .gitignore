@@ -16,6 +16,9 @@ dist-ssr
 
 # Playwright MCP session artifacts (console/page dumps from browser verification)
 .playwright-mcp/
+# Stray screenshots saved to the repo root during browser verification
+# (real image assets live under src/assets/ and public/).
+/*.png
 
 # Editor directories and files
 .vscode/*

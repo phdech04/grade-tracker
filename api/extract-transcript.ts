@@ -11,10 +11,10 @@ For every course on the transcript, output one entry with:
 - code: the course code as written, e.g. "AMATH 250". Empty if none.
 - name: the course title. Empty only if truly absent.
 - term: the term/level as written, e.g. "Fall 2025", "Winter 2026", or a level like "2A". Empty if none.
-- credits: the credit/unit weight as a number (e.g. 0.5, 1, 3). 0 if not shown.
-- grade: the FINAL grade as a number percentage (e.g. 87). Use 0 when the outcome is not a number (e.g. CR, NCR, IP, IN, withdrawn) or not yet available.
+- credits: the credit/unit weight from the "Attempted" column as a number (e.g. 0.5, 1). 0 if not shown.
+- grade: the raw value in the Grade column, as TEXT — do not convert or invent. A number like "87" for a graded course; "CR" for credit; "NCR" for no-credit; "WD" (also "WF" or "W") for withdrawn; and "" (empty string) when the course has no grade yet because it is currently in progress (common in the most recent term).
 
-Include all listed courses in transcript order. Do not invent courses or grades. Return an empty entries array if the document has no course list.`;
+Include every listed course in transcript order, including credit/no-credit, withdrawn, and in-progress ones. Do not invent courses or grades. Return an empty entries array if the document has no course list.`;
 
 const SCHEMA = {
   type: "OBJECT",
@@ -28,8 +28,12 @@ const SCHEMA = {
           code: { type: "STRING", description: "Course code as written. Empty if none." },
           name: { type: "STRING", description: "Course title." },
           term: { type: "STRING", description: "Term or level as written. Empty if none." },
-          credits: { type: "NUMBER", description: "Credit/unit weight as a number. 0 if not shown." },
-          grade: { type: "NUMBER", description: "Final percentage as a number. 0 if non-numeric or unavailable." },
+          credits: { type: "NUMBER", description: "Credit/unit weight (Attempted column) as a number. 0 if not shown." },
+          grade: {
+            type: "STRING",
+            description:
+              "Raw Grade-column value as text: a number like '87', or 'CR' / 'NCR' / 'WD', or '' when in progress.",
+          },
         },
         required: ["code", "name", "term", "credits", "grade"],
         propertyOrdering: ["code", "name", "term", "credits", "grade"],

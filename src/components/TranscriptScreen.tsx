@@ -1,10 +1,47 @@
 import { useMemo, useState } from "react";
-import type { Course, TranscriptEntry } from "../types";
+import type { Course, TranscriptEntry, TranscriptStatus } from "../types";
 import { byTerm, cumulativeAverage, distribution, extremes, graded, totals } from "../lib/transcript";
 import { gradeSummary } from "../lib/grades";
 import { gradeColor, pct } from "../lib/format";
 import { uid } from "../lib/storage";
 import { Distribution, TermTrend } from "./TranscriptCharts";
+
+const STATUS_BADGE: Record<TranscriptStatus, { label: string; cls: string } | null> = {
+  graded: null,
+  credit: { label: "CR", cls: "bg-good/10 text-good" },
+  "no-credit": { label: "NCR", cls: "bg-bad/10 text-bad" },
+  "in-progress": { label: "In progress", cls: "bg-accent-wash text-accent" },
+  withdrawn: { label: "WD", cls: "bg-paper-sunk text-ink-faint" },
+};
+
+const STATUS_OPTIONS: { value: TranscriptStatus; label: string }[] = [
+  { value: "graded", label: "Graded" },
+  { value: "credit", label: "Credit (CR)" },
+  { value: "no-credit", label: "No credit (NCR)" },
+  { value: "in-progress", label: "In progress" },
+  { value: "withdrawn", label: "Withdrawn" },
+];
+
+/** Right-aligned outcome cell: a coloured percentage when graded, else a status badge. */
+function GradeCell({ entry }: { entry: TranscriptEntry }) {
+  if (entry.status === "graded" && entry.grade != null) {
+    return (
+      <span
+        className="font-display text-sm font-semibold tabular-nums"
+        style={{ color: gradeColor(entry.grade) }}
+      >
+        {pct(entry.grade, 0)}
+      </span>
+    );
+  }
+  const badge = STATUS_BADGE[entry.status];
+  if (!badge) return <span className="text-sm text-ink-faint">—</span>;
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.cls}`}>
+      {badge.label}
+    </span>
+  );
+}
 
 interface Props {
   transcript: TranscriptEntry[];
@@ -27,7 +64,7 @@ export function TranscriptScreen({ transcript, courses, onChange, onImport }: Pr
   const add = () =>
     onChange([
       ...transcript,
-      { id: uid(), name: "New course", term: "", source: "manual" },
+      { id: uid(), name: "New course", term: "", status: "graded", source: "manual" },
     ]);
   const addAndEdit = () => {
     add();
@@ -46,6 +83,7 @@ export function TranscriptScreen({ transcript, courses, onChange, onImport }: Pr
       term: course.term ?? "",
       credits: course.credits,
       grade,
+      status: grade != null ? "graded" : "in-progress",
       source: "course",
       courseId: course.id,
     };
@@ -122,7 +160,10 @@ export function TranscriptScreen({ transcript, courses, onChange, onImport }: Pr
                   </div>
                   <ul className="divide-y divide-line/60">
                     {g.entries.map((e) => (
-                      <li key={e.id} className="flex items-center gap-3 px-4 py-2">
+                      <li
+                        key={e.id}
+                        className={`flex items-center gap-3 px-4 py-2 ${e.status === "withdrawn" ? "opacity-50" : ""}`}
+                      >
                         {e.code && (
                           <span className="shrink-0 rounded bg-paper-sunk px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-ink-soft">
                             {e.code}
@@ -134,11 +175,8 @@ export function TranscriptScreen({ transcript, courses, onChange, onImport }: Pr
                             {e.credits} cr
                           </span>
                         )}
-                        <span
-                          className="w-14 shrink-0 text-right font-display text-sm font-semibold tabular-nums"
-                          style={{ color: e.grade != null ? gradeColor(e.grade) : undefined }}
-                        >
-                          {e.grade != null ? pct(e.grade, 0) : "—"}
+                        <span className="flex w-20 shrink-0 justify-end text-right">
+                          <GradeCell entry={e} />
                         </span>
                       </li>
                     ))}
@@ -234,8 +272,8 @@ function PerformanceSummary({ transcript }: { transcript: TranscriptEntry[] }) {
         </p>
       </div>
       <div>
-        <p className="label">Courses</p>
-        <p className="mt-0.5 font-display text-2xl font-semibold tabular-nums">{t.gradedCount}</p>
+        <p className="label">Graded courses</p>
+        <p className="mt-0.5 font-display text-2xl font-semibold tabular-nums">{t.graded}</p>
       </div>
       <div>
         <p className="label">Credits</p>
@@ -243,6 +281,14 @@ function PerformanceSummary({ transcript }: { transcript: TranscriptEntry[] }) {
           {Number(t.credits.toFixed(2))}
         </p>
       </div>
+      {t.inProgress > 0 && (
+        <div>
+          <p className="label">In progress</p>
+          <p className="mt-0.5 font-display text-2xl font-semibold tabular-nums text-accent">
+            {t.inProgress}
+          </p>
+        </div>
+      )}
       {best && worst && (
         <div className="ml-auto text-right text-xs text-ink-soft">
           <p>
@@ -314,15 +360,31 @@ function EditList({
               placeholder="cr"
               className="w-16 rounded border border-line bg-paper-card px-2 py-1 text-right text-xs tabular-nums outline-none focus:border-accent"
             />
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={e.grade ?? ""}
-              onChange={(ev) => onUpdate(e.id, { grade: gradePct(ev.target.value) })}
-              placeholder="%"
-              className="w-16 rounded border border-line bg-paper-card px-2 py-1 text-right text-sm tabular-nums outline-none focus:border-accent"
-            />
+            <select
+              value={e.status}
+              onChange={(ev) => {
+                const status = ev.target.value as TranscriptStatus;
+                onUpdate(e.id, { status, grade: status === "graded" ? e.grade : undefined });
+              }}
+              className="rounded border border-line bg-paper-card px-1.5 py-1 text-xs outline-none focus:border-accent"
+            >
+              {STATUS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            {e.status === "graded" && (
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={e.grade ?? ""}
+                onChange={(ev) => onUpdate(e.id, { grade: gradePct(ev.target.value) })}
+                placeholder="%"
+                className="w-16 rounded border border-line bg-paper-card px-2 py-1 text-right text-sm tabular-nums outline-none focus:border-accent"
+              />
+            )}
             <button
               onClick={() => onRemove(e.id)}
               className="grid h-6 w-6 shrink-0 place-items-center rounded text-ink-faint hover:text-bad"

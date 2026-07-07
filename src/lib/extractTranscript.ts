@@ -1,4 +1,4 @@
-import type { TranscriptEntry } from "../types";
+import type { TranscriptEntry, TranscriptStatus } from "../types";
 import { uid } from "./storage";
 
 // Client side of transcript extraction: send a transcript file or pasted text
@@ -10,7 +10,23 @@ interface ExtractedTranscriptEntry {
   name: string;
   term: string;
   credits: number;
-  grade: number;
+  /** Raw Grade-column token: a number, "CR"/"NCR"/"WD", or "" for in-progress. */
+  grade: string;
+}
+
+/** Classify a raw transcript grade token into a status and (if graded) a percentage. */
+export function classifyGrade(token: string): { status: TranscriptStatus; grade?: number } {
+  const t = (token || "").trim().toUpperCase();
+  if (t === "") return { status: "in-progress" };
+  const n = Number(t);
+  if (Number.isFinite(n) && t !== "") {
+    return { status: "graded", grade: Math.min(100, Math.max(0, n)) };
+  }
+  if (t === "CR") return { status: "credit" };
+  if (t === "NCR" || t === "NC") return { status: "no-credit" };
+  if (t === "WD" || t === "WF" || t === "W") return { status: "withdrawn" };
+  // Anything else non-numeric (IP, IN, INC, DNW, …) → treat as in progress.
+  return { status: "in-progress" };
 }
 
 /** Raw shape returned by /api/extract-transcript. Exported for unit tests. */
@@ -35,26 +51,26 @@ function htmlToText(html: string): string {
 }
 
 /**
- * Map the raw extraction into transcript entries (drops blank-name rows).
- * Note: the extractor emits `grade: 0` for non-numeric outcomes (CR/NCR/IP), so
- * here `0` means "ungraded" → undefined. Manual entry and course-pull, by
- * contrast, treat a typed 0 as a real 0% grade. Grades are clamped to ≤100.
+ * Map the raw extraction into transcript entries (drops blank-name rows). The
+ * Grade column is a text token classified into a status: numbers → graded (and
+ * clamped 0–100), "CR"/"NCR"/"WD" → their statuses, "" → in-progress.
  */
 export function toTranscript(ex: ExtractedTranscript): TranscriptEntry[] {
   return (ex.entries || [])
     .filter((e) => e && (e.name || "").trim())
-    .map((e) => ({
-      id: uid(),
-      code: (e.code || "").trim() || undefined,
-      name: (e.name || "").trim(),
-      term: (e.term || "").trim(),
-      credits: typeof e.credits === "number" && e.credits > 0 ? e.credits : undefined,
-      grade:
-        typeof e.grade === "number" && e.grade > 0 && Number.isFinite(e.grade)
-          ? Math.min(100, e.grade)
-          : undefined,
-      source: "import" as const,
-    }));
+    .map((e) => {
+      const { status, grade } = classifyGrade(e.grade);
+      return {
+        id: uid(),
+        code: (e.code || "").trim() || undefined,
+        name: (e.name || "").trim(),
+        term: (e.term || "").trim(),
+        credits: typeof e.credits === "number" && e.credits > 0 ? e.credits : undefined,
+        grade,
+        status,
+        source: "import" as const,
+      };
+    });
 }
 
 async function postTranscript(

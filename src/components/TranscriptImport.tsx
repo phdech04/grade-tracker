@@ -4,6 +4,14 @@ import { extractTranscript } from "../lib/extractTranscript";
 import { graded } from "../lib/transcript";
 import { pct } from "../lib/format";
 
+const STATUS_TAG: Record<TranscriptEntry["status"], string> = {
+  graded: "Graded",
+  credit: "CR",
+  "no-credit": "NCR",
+  "in-progress": "In progress",
+  withdrawn: "WD",
+};
+
 interface Props {
   onCancel: () => void;
   onSave: (entries: TranscriptEntry[]) => void;
@@ -136,8 +144,10 @@ function ReviewBody({
   return (
     <div>
       <p className="text-sm text-ink-soft">
-        Found {rows.length} course{rows.length === 1 ? "" : "s"} ({gradedCount} with a grade). Remove
-        anything that shouldn't be here; you can fine-tune details after saving.
+        Found {rows.length} course{rows.length === 1 ? "" : "s"} — {gradedCount} graded
+        {rows.length - gradedCount > 0 ? `, ${rows.length - gradedCount} credit/in-progress` : ""}.
+        Only graded courses count toward your average. Remove anything that shouldn't be here; you
+        can fine-tune after saving.
       </p>
 
       <div className="mt-3 overflow-hidden rounded-xl border border-line">
@@ -148,6 +158,7 @@ function ReviewBody({
               <th className="px-3 py-2 font-semibold">Term</th>
               <th className="px-3 py-2 text-right font-semibold">Credits</th>
               <th className="px-3 py-2 text-right font-semibold">Grade</th>
+              <th className="px-3 py-2 text-center font-semibold">Status</th>
               <th className="px-3 py-2" />
             </tr>
           </thead>
@@ -161,7 +172,10 @@ function ReviewBody({
                 <td className="px-3 py-2 text-ink-soft">{e.term || "—"}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-ink-soft">{e.credits ?? "—"}</td>
                 <td className="px-3 py-2 text-right font-semibold tabular-nums">
-                  {e.grade != null ? pct(e.grade, 0) : "—"}
+                  {e.status === "graded" && e.grade != null ? pct(e.grade, 0) : "—"}
+                </td>
+                <td className="px-3 py-2 text-center text-[11px] text-ink-soft">
+                  {STATUS_TAG[e.status]}
                 </td>
                 <td className="px-3 py-2 text-right">
                   <button

@@ -1,22 +1,31 @@
-import type { AppData, Course } from "../types";
-import { migrateV1, migrateV2, type AppDataV1, type AppDataV2 } from "./migrate";
+import type { AppData, Course, TranscriptEntry } from "../types";
+import {
+  migrateV1,
+  migrateV2,
+  migrateV3,
+  type AppDataV1,
+  type AppDataV2,
+  type AppDataV3,
+} from "./migrate";
 
 // The key predates later schema versions; the `version` field inside distinguishes.
 const DATA_KEY = "grade-tracker:data:v1";
 
-const empty: AppData = { version: 3, courses: [] };
+const empty: AppData = { version: 4, courses: [], transcript: [] };
 
 function coerce(parsed: unknown): AppData | null {
-  const p = parsed as { version?: number; courses?: unknown };
+  const p = parsed as { version?: number; courses?: unknown; transcript?: unknown };
   if (!p || !Array.isArray(p.courses)) return null;
-  if (p.version === 3) {
-    // Backfill events defensively — a hand-edited or partially-written payload
-    // may lack it, and the whole app assumes course.events is always an array.
+  if (p.version === 4) {
+    // Backfill defensively — a hand-edited or partial payload may lack a field,
+    // and the app assumes course.events and top-level transcript are arrays.
     const courses = (p.courses as Course[]).map((c) => ({ ...c, events: c.events ?? [] }));
-    return { version: 3, courses };
+    const transcript = (p.transcript as TranscriptEntry[] | undefined) ?? [];
+    return { version: 4, courses, transcript };
   }
-  if (p.version === 2) return migrateV2(p as AppDataV2);
-  if (p.version === 1) return migrateV2(migrateV1(p as AppDataV1));
+  if (p.version === 3) return migrateV3(p as AppDataV3);
+  if (p.version === 2) return migrateV3(migrateV2(p as AppDataV2));
+  if (p.version === 1) return migrateV3(migrateV2(migrateV1(p as AppDataV1)));
   return null;
 }
 

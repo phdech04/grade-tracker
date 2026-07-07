@@ -85,7 +85,27 @@ export interface Course {
   updatedAt: number;
 }
 
+/**
+ * A completed course on the student's transcript. Independent of the in-progress
+ * `Course` tracker — just a final record used for performance analytics.
+ */
+export interface TranscriptEntry {
+  id: string;
+  code?: string;
+  name: string;
+  /** Free-text term, e.g. "Fall 2025" or "2A". */
+  term: string;
+  /** Credit weight in averages; unset counts as 1. */
+  credits?: number;
+  /** Final percentage. undefined = ungraded / CR-NCR (excluded from averages). */
+  grade?: number;
+  source: "import" | "manual" | "course";
+  /** Set when pulled from an in-progress Course, to dedupe and allow refresh. */
+  courseId?: string;
+}
+
 export interface AppData {
-  version: 3;
+  version: 4;
   courses: Course[];
+  transcript: TranscriptEntry[];
 }

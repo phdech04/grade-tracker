@@ -1,4 +1,4 @@
-import type { AppData, Component, DropRule, Hurdle, Item } from "../types";
+import type { AppData, Component, Course, DropRule, Hurdle, Item } from "../types";
 import { countTarget } from "./grades";
 
 // Historical stored shapes. Each migrateVN takes the version-N payload and
@@ -28,11 +28,23 @@ export interface AppDataV2 {
   courses: CourseV2[];
 }
 
-export function migrateV2(data: AppDataV2): AppData {
+export function migrateV2(data: AppDataV2): AppDataV3 {
   return {
     version: 3,
     courses: data.courses.map((c) => ({ ...c, events: [] })),
   };
+}
+
+// --- v3: dated coursework (events) added, before the transcript existed -----
+
+/** v3 Course is identical to the current Course; v3 had no top-level transcript. */
+export interface AppDataV3 {
+  version: 3;
+  courses: Course[];
+}
+
+export function migrateV3(data: AppDataV3): AppData {
+  return { version: 4, courses: data.courses, transcript: [] };
 }
 
 // --- v1: score/max + percentage-vs-points model -----------------------------

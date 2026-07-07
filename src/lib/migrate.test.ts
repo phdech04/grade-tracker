@@ -3,11 +3,14 @@ import { gradeSummary } from "./grades";
 import {
   migrateV1,
   migrateV2,
+  migrateV3,
   type AppDataV1,
   type AppDataV2,
+  type AppDataV3,
   type CourseV1,
   type CourseV2,
 } from "./migrate";
+import type { Course } from "../types";
 
 const base = { hurdles: [], createdAt: 0, updatedAt: 0 };
 
@@ -168,5 +171,32 @@ describe("migrateV2", () => {
     expect(c.notes).toBe("keep me");
     expect(c.createdAt).toBe(7);
     expect(gradeSummary(c).current).toBe(before.current);
+  });
+});
+
+describe("migrateV3", () => {
+  const course: Course = {
+    id: "c",
+    name: "Stats",
+    components: [{ id: "a", name: "A", weight: 100, items: [{ id: "i", label: "A1", score: 82 }] }],
+    hurdles: [],
+    events: [{ id: "e", title: "A1", kind: "assignment", due: "2026-01-10", source: "outline" }],
+    createdAt: 3,
+    updatedAt: 4,
+  };
+  const v3: AppDataV3 = { version: 3, courses: [course] };
+
+  it("bumps to v4 and adds an empty top-level transcript", () => {
+    const out = migrateV3(v3);
+    expect(out.version).toBe(4);
+    expect(out.transcript).toEqual([]);
+  });
+
+  it("leaves courses (and their grades and events) untouched", () => {
+    const before = gradeSummary(course).current;
+    const out = migrateV3(v3);
+    expect(out.courses).toHaveLength(1);
+    expect(out.courses[0].events).toHaveLength(1);
+    expect(gradeSummary(out.courses[0]).current).toBe(before);
   });
 });

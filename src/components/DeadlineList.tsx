@@ -31,9 +31,7 @@ export function DeadlineList({ events, components, editing, today, onChange }: P
 
       {events.length === 0 ? (
         <p className="text-sm text-ink-faint">
-          {editing
-            ? "No deadlines yet — add one below."
-            : "No deadlines yet. Re-import this course's outline to pull its schedule automatically, or tap Edit to add them by hand."}
+          {editing ? "No deadlines yet — add one below." : "No deadlines yet — tap Edit to add them."}
         </p>
       ) : (
         <ul className="divide-y divide-line/60">
